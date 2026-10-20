@@ -765,6 +765,144 @@ body {
   box-shadow: 0 0 18px rgba(255, 111, 196, 0.65);
 }
 
+/* ---------- 取向套娃（虚构/娱乐） ---------- */
+.orientation-card {
+  grid-column: 1 / -1;
+}
+
+.tower__sub {
+  margin: 14px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+}
+
+.tower__l0 {
+  margin-top: 10px;
+}
+
+.tower__l0 .bar__track {
+  height: 8px;
+}
+
+.tower__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--stroke-soft);
+}
+
+.tower__label {
+  color: var(--ink-muted);
+  font-size: 0.76rem;
+}
+
+.tower__shuffle {
+  margin-left: auto;
+  padding: 7px 12px;
+  font-size: 0.8rem;
+}
+
+.tower__pick {
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border: 1px dashed rgba(255, 160, 220, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 111, 196, 0.08);
+  color: #ffd0f2;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.tower__list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tower__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.tower__item:first-child {
+  border-color: rgba(255, 143, 220, 0.4);
+  background: linear-gradient(135deg, rgba(255, 111, 196, 0.12), rgba(176, 108, 255, 0.08));
+}
+
+.tower__chain {
+  min-width: 0;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.tower__pct {
+  flex: 0 0 auto;
+  color: #ffd0f2;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tower__disclaimer {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--stroke-soft);
+  color: var(--ink-muted);
+  font-size: 0.73rem;
+  line-height: 1.65;
+}
+
+/* L0 四类配色 */
+.bar__dot--tower-straight-male {
+  background: linear-gradient(135deg, #8ec5ff, #6a8dff);
+  box-shadow: 0 0 10px rgba(126, 178, 255, 0.5);
+}
+
+.bar__dot--tower-straight-female {
+  background: linear-gradient(135deg, #ffb3e6, #ff8ad8);
+  box-shadow: 0 0 10px rgba(255, 138, 216, 0.55);
+}
+
+.bar__dot--tower-gay-male {
+  background: linear-gradient(135deg, #c4b5fd, #8b5cf6);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+}
+
+.bar__dot--tower-lesbian {
+  background: linear-gradient(135deg, #f0abfc, #d946ef);
+  box-shadow: 0 0 10px rgba(217, 70, 239, 0.5);
+}
+
+.bar__fill--tower-straight-male {
+  background: linear-gradient(90deg, #8ec5ff, #6a8dff);
+}
+
+.bar__fill--tower-straight-female {
+  background: linear-gradient(90deg, #ffb3e6, #ff8ad8);
+}
+
+.bar__fill--tower-gay-male {
+  background: linear-gradient(90deg, #c4b5fd, #8b5cf6);
+}
+
+.bar__fill--tower-lesbian {
+  background: linear-gradient(90deg, #f0abfc, #d946ef);
+}
+
 .bar__head {
   display: flex;
   align-items: baseline;

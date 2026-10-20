@@ -8,6 +8,13 @@
  */
 
 import { loadModel, predict, occlusionAttribution } from './inference.js';
+import {
+  TOWER_TYPE_KEYS,
+  TOWER_TYPE_NAMES,
+  buildOrientationTower,
+  pickRandomTowerPath,
+  formatTowerPercent,
+} from './orientation.js';
 
 export const EXAMPLE_NAMES = [
   '林晚', '苏清', '沈月', '顾言', '张伟', '王芳', '李娜', '陈星', 'Alice', 'Bob', '林晚_233', 'Alice_777',
@@ -299,6 +306,12 @@ function initApp() {
     contribList: $('#contrib-list'),
     contribTarget: $('#contrib-target'),
     segButtons: Array.from(document.querySelectorAll('[data-contrib-head]')),
+    towerCard: $('#tower-card'),
+    towerL0Bars: $('#tower-l0-bars'),
+    towerList: $('#tower-list'),
+    towerPick: $('#tower-pick'),
+    towerShuffle: $('#tower-shuffle'),
+    towerDepthButtons: Array.from(document.querySelectorAll('[data-tower-depth]')),
     metricIds: [
       'metric-gender-acc',
       'metric-gender-bal',
@@ -329,13 +342,18 @@ function initApp() {
   let busy = false;
   let composing = false;
   let lastRaw = '';
+  let lastView = null;
   let contribHead = 'yuri';
+  let towerDepth = 2;
   /** @type {Record<string, Array<{row: HTMLElement, pct: HTMLElement, fill: HTMLElement}>>} */
   const barRefs = {};
+  /** L0 四条小概率条的 DOM 引用（顺序 = TOWER_TYPE_KEYS） */
+  const towerBarRefs = [];
 
   /* ---------- 初始骨架 ---------- */
   initGauge();
   renderChips();
+  buildTowerBars();
   bindEvents();
   bootModel();
 
@@ -413,6 +431,18 @@ function initApp() {
         }
       });
     });
+
+    // 套娃深度切换 / 随机抽一条
+    els.towerDepthButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        setTowerDepth(Number(button.dataset.towerDepth));
+      });
+    });
+    if (els.towerShuffle) {
+      els.towerShuffle.addEventListener('click', () => {
+        handleTowerShuffle();
+      });
+    }
   }
 
   function setContribHead(head) {
@@ -443,6 +473,7 @@ function initApp() {
       els.result.hidden = true;
       if (els.dims) els.dims.hidden = true;
       if (els.contribCard) els.contribCard.hidden = true;
+      if (els.towerCard) els.towerCard.hidden = true;
       showError('模型加载失败', err && err.message ? err.message : String(err));
     }
   }
@@ -625,6 +656,10 @@ function initApp() {
     // 逐字贡献
     renderContribution(view);
 
+    // 取向套娃（纯前端规则组合器）
+    lastView = view;
+    renderTower(view);
+
     // 移动端：结果在视口外时轻轻滚过去
     if (typeof window !== 'undefined' && els.result.getBoundingClientRect().top > window.innerHeight * 0.72) {
       els.result.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -658,6 +693,128 @@ function initApp() {
       chip.append(charEl, deltaEl);
       els.contribList.append(chip);
     });
+  }
+
+  /* ---------- 取向套娃（纯前端规则组合器） ---------- */
+
+  /** 生成 L0 四条小概率条（类型固定：直男/直女/男同/女同）。 */
+  function buildTowerBars() {
+    if (!els.towerL0Bars) return;
+    els.towerL0Bars.replaceChildren();
+    towerBarRefs.length = 0;
+    TOWER_TYPE_KEYS.forEach((key) => {
+      const cssKey = key.replace(/_/g, '-');
+      const row = document.createElement('div');
+      row.className = `bar bar--tower-${cssKey}`;
+
+      const headEl = document.createElement('div');
+      headEl.className = 'bar__head';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'bar__name';
+      const dot = document.createElement('span');
+      dot.className = `bar__dot bar__dot--tower-${cssKey}`;
+      dot.setAttribute('aria-hidden', 'true');
+      nameEl.append(dot, document.createTextNode(TOWER_TYPE_NAMES[key]));
+      const pct = document.createElement('span');
+      pct.className = 'bar__pct';
+      pct.textContent = '--%';
+      headEl.append(nameEl, pct);
+
+      const track = document.createElement('div');
+      track.className = 'bar__track';
+      const fill = document.createElement('span');
+      fill.className = `bar__fill bar__fill--tower-${cssKey}`;
+      track.append(fill);
+
+      row.append(headEl, track);
+      els.towerL0Bars.append(row);
+      towerBarRefs.push({ row, pct, fill });
+    });
+  }
+
+  /** 渲染套娃卡：L0 概率条 + top5 路径（百分比为 top5 归一化）。 */
+  function renderTower(view) {
+    if (!els.towerCard) return;
+    let tower = null;
+    try {
+      tower = buildOrientationTower(view.probs, towerDepth);
+    } catch (err) {
+      tower = null;
+    }
+    if (!tower) {
+      els.towerCard.hidden = true;
+      return;
+    }
+    els.towerCard.hidden = false;
+
+    // L0 四条小概率条
+    let topL0 = 0;
+    tower.l0.forEach((item, index) => {
+      if (item.prob > tower.l0[topL0].prob) topL0 = index;
+    });
+    tower.l0.forEach((item, index) => {
+      const ref = towerBarRefs[index];
+      if (!ref) return;
+      const prob = Math.min(1, Math.max(0, item.prob));
+      ref.pct.textContent = formatTowerPercent(prob, 1);
+      ref.fill.style.width = `${prob * 100}%`;
+      ref.row.classList.toggle('is-top', index === topL0);
+    });
+
+    // top5 链
+    if (els.towerList) {
+      els.towerList.replaceChildren();
+      tower.paths.forEach((path) => {
+        const li = document.createElement('li');
+        li.className = 'tower__item';
+        li.title = `原始连乘值 ${path.rawProb.toExponential(3)}；展示百分比按 top${tower.paths.length} 归一化`;
+        const chain = document.createElement('span');
+        chain.className = 'tower__chain';
+        chain.textContent = path.text;
+        const pct = document.createElement('span');
+        pct.className = 'tower__pct';
+        pct.textContent = `${path.percent.toFixed(1)}%`;
+        li.append(chain, pct);
+        els.towerList.append(li);
+      });
+    }
+
+    // 切深度/换名字后先清空抽签行
+    if (els.towerPick) {
+      els.towerPick.hidden = true;
+      els.towerPick.textContent = '';
+    }
+    updateTowerDepthButtons();
+  }
+
+  function setTowerDepth(depth) {
+    const n = Math.round(Number(depth));
+    towerDepth = Number.isFinite(n) ? Math.min(3, Math.max(1, n)) : 2;
+    updateTowerDepthButtons();
+    if (lastView) renderTower(lastView);
+  }
+
+  function updateTowerDepthButtons() {
+    els.towerDepthButtons.forEach((button) => {
+      const active = Number(button.dataset.towerDepth) === towerDepth;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  /** 「换一个」：从 top50 路径里随机抽一条显示（纯娱乐）。 */
+  function handleTowerShuffle() {
+    if (!els.towerPick || !lastView) return;
+    let tower = null;
+    try {
+      tower = buildOrientationTower(lastView.probs, towerDepth);
+    } catch (err) {
+      tower = null;
+    }
+    const path = pickRandomTowerPath(tower);
+    if (!path) return;
+    els.towerPick.hidden = false;
+    els.towerPick.textContent = `🎲 随机抽中（top50 内）：${path.text} · 原始概率 ${(path.rawProb * 100).toFixed(3)}%`;
   }
 
   /* ---------- 状态与提示 ---------- */

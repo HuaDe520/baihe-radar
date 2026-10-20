@@ -152,6 +152,27 @@
           <div class="bars" id="genre-bars" data-head="genre"></div>
         </section>
 
+        <section class="card head-card orientation-card" id="tower-card" aria-labelledby="tower-title" hidden>
+          <div class="head-card__head">
+            <h3 class="head-card__title" id="tower-title">取向套娃（虚构/娱乐）</h3>
+            <p class="head-card__note">把「性别用字倾向 × 虚构作品取向」按手写先验递归套娃，纯属捏造与娱乐，不是真人取向判断。</p>
+          </div>
+          <p class="tower__sub">L0：四类取向（由性别头与作品头推导）</p>
+          <div class="bars tower__l0" id="tower-l0-bars"></div>
+          <div class="tower__head">
+            <span class="tower__label">套娃深度</span>
+            <div class="seg" role="group" aria-label="套娃深度">
+              <button class="seg-btn" type="button" data-tower-depth="1" aria-pressed="false">1 层</button>
+              <button class="seg-btn is-active" type="button" data-tower-depth="2" aria-pressed="true">2 层</button>
+              <button class="seg-btn" type="button" data-tower-depth="3" aria-pressed="false">3 层</button>
+            </div>
+            <button class="ghost-btn tower__shuffle" id="tower-shuffle" type="button">🎲 换一个</button>
+          </div>
+          <p class="tower__pick" id="tower-pick" hidden></p>
+          <ol class="tower__list" id="tower-list" aria-label="套娃链 top5"></ol>
+          <p class="tower__disclaimer">套娃链是规则组合器按手写先验生成的玩笑（受 B 站《更多性取向》启发），不是模型预测，更不是真人取向判断。</p>
+        </section>
+
         <section class="card head-card" data-head-card="expression" aria-labelledby="expression-title">
           <div class="head-card__head">
             <h3 class="head-card__title" id="expression-title">ACG 属性</h3>
