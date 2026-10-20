@@ -627,6 +627,124 @@ body {
   gap: 14px;
 }
 
+/* ---------- 多维输出卡（性别 / ACG 属性 / 作品） ---------- */
+.dims {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.dims .card + .card {
+  margin-top: 0;
+}
+
+.head-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.head-card__title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.head-card__note {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.head-card .bars {
+  margin-top: 14px;
+}
+
+/* 各头概率条配色 */
+.bar__dot--gender-female {
+  background: linear-gradient(135deg, #ff9ade, #ff5fb8);
+  box-shadow: 0 0 10px rgba(255, 138, 216, 0.65);
+}
+
+.bar__dot--gender-male {
+  background: linear-gradient(135deg, #8ec5ff, #6a8dff);
+  box-shadow: 0 0 10px rgba(126, 178, 255, 0.55);
+}
+
+.bar__dot--expression-trap {
+  background: linear-gradient(135deg, #e9b8ff, #b565f5);
+  box-shadow: 0 0 10px rgba(216, 180, 254, 0.6);
+}
+
+.bar__dot--expression-futanari {
+  background: linear-gradient(135deg, #8be9f6, #38bdf8);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.55);
+}
+
+.bar__dot--expression-tomboy {
+  background: linear-gradient(135deg, #ffd88a, #fb923c);
+  box-shadow: 0 0 10px rgba(251, 146, 60, 0.5);
+}
+
+.bar__dot--expression-normal {
+  background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+  box-shadow: 0 0 10px rgba(148, 163, 184, 0.45);
+}
+
+.bar__dot--genre-baihe {
+  background: linear-gradient(135deg, #ff9ade, #d27bff);
+  box-shadow: 0 0 10px rgba(255, 138, 216, 0.7);
+}
+
+.bar__dot--genre-purelove {
+  background: linear-gradient(135deg, var(--cyan), var(--indigo));
+  box-shadow: 0 0 10px rgba(106, 215, 255, 0.55);
+}
+
+.bar__dot--genre-romance {
+  background: linear-gradient(135deg, var(--amber), #ff9f7a);
+  box-shadow: 0 0 10px rgba(255, 204, 138, 0.5);
+}
+
+.bar__fill--gender-female {
+  background: linear-gradient(90deg, #ff9ade, #d27bff);
+  box-shadow: 0 0 18px rgba(255, 111, 196, 0.6);
+}
+
+.bar__fill--gender-male {
+  background: linear-gradient(90deg, #8ec5ff, #6a8dff);
+}
+
+.bar__fill--expression-trap {
+  background: linear-gradient(90deg, #e9b8ff, #b565f5);
+}
+
+.bar__fill--expression-futanari {
+  background: linear-gradient(90deg, #8be9f6, #38bdf8);
+}
+
+.bar__fill--expression-tomboy {
+  background: linear-gradient(90deg, #ffd88a, #fb923c);
+}
+
+.bar__fill--expression-normal {
+  background: linear-gradient(90deg, #cbd5e1, #94a3b8);
+}
+
+.bar__fill--genre-baihe {
+  background: linear-gradient(90deg, #ff9ade, #d27bff);
+  box-shadow: 0 0 18px rgba(255, 111, 196, 0.65);
+}
+
+.bar__fill--genre-purelove {
+  background: linear-gradient(90deg, var(--cyan), var(--indigo));
+}
+
+.bar__fill--genre-romance {
+  background: linear-gradient(90deg, var(--amber), #ff9f7a);
+}
+
 .bar__head {
   display: flex;
   align-items: baseline;
@@ -709,11 +827,62 @@ body {
   text-shadow: 0 0 18px rgba(255, 138, 216, 0.7);
 }
 
-/* ---------- 逐字贡献 ---------- */
-.contrib {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--stroke-soft);
+/* ---------- 逐字贡献（可切换目标） ---------- */
+.contrib-card {
+  margin-top: 18px;
+}
+
+.contrib__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contrib__intro {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.contrib__target {
+  margin: 12px 0 0;
+  color: #ffd0f2;
+  font-size: 0.82rem;
+}
+
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.seg-btn {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.seg-btn:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.seg-btn.is-active {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(255, 111, 196, 0.92), rgba(176, 108, 255, 0.86));
+  box-shadow: 0 8px 20px -12px rgba(255, 111, 196, 0.9);
 }
 
 .contrib__title {
@@ -869,6 +1038,64 @@ body {
   font-size: 0.78rem;
 }
 
+/* ---------- 四头指标 ---------- */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.metric {
+  padding: 12px 13px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.metric__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.metric__sub {
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+  font-weight: 400;
+}
+
+.metric__dl {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.metric__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.metric__row dt {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+}
+
+.metric__row dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
 .disclaimer {
   margin: 16px 0 0;
   padding: 13px 15px;
@@ -1017,6 +1244,18 @@ body {
 
   .gauge {
     margin: 0;
+  }
+
+  .dims {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .head-card--wide {
+    grid-column: 1 / -1;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

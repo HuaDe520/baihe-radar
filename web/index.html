@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta
       name="description"
-      content="百合雷达 BAIHE RADAR：输入任意名字，测测它的百合指数。纯娱乐向的双头字符级神经网络小玩具，训练数据仅为虚构小说角色名。"
+      content="百合雷达 BAIHE RADAR：输入任意名字（中文 / 英文均可），测测它的百合指数与性别、ACG 属性、作品倾向等多维用字倾向。纯娱乐向的多头字符级神经网络小玩具。"
     />
     <meta name="theme-color" content="#170b2b" />
     <title>百合雷达 BAIHE RADAR</title>
@@ -24,7 +24,7 @@
 
     <main class="wrap">
       <header class="hero">
-        <p class="hero__badge">📡 双头字符级 CNN · 纯娱乐向</p>
+        <p class="hero__badge">📡 多头字符级 CNN · 纯娱乐向</p>
         <h1 class="hero__title">
           <svg class="hero__logo" viewBox="0 0 48 48" aria-hidden="true">
             <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-opacity=".28" stroke-width="2" />
@@ -37,7 +37,7 @@
           <span class="hero__name">百合雷达</span>
           <span class="hero__en">BAIHE RADAR</span>
         </h1>
-        <p class="hero__subtitle">输入任意名字，测测它的百合指数（纯娱乐向）</p>
+        <p class="hero__subtitle">输入任意名字（中文 / 英文都行），测测它的百合指数与用字倾向（纯娱乐向）</p>
       </header>
 
       <section class="card scan-card" aria-labelledby="scan-title">
@@ -50,12 +50,12 @@
               id="name-input"
               type="text"
               name="name"
-              placeholder="输入一个名字，如：林晚"
+              placeholder="输入一个名字，如：林晚 / Alice"
               autocomplete="off"
               autocapitalize="off"
               spellcheck="false"
               enterkeyhint="search"
-              maxlength="40"
+              maxlength="60"
             />
             <button class="scan-btn" id="scan-btn" type="submit" disabled>
               <span class="scan-btn__icon" aria-hidden="true">📡</span>
@@ -75,10 +75,13 @@
             <button class="chip" type="button" data-name="王芳">王芳</button>
             <button class="chip" type="button" data-name="李娜">李娜</button>
             <button class="chip" type="button" data-name="陈星">陈星</button>
+            <button class="chip" type="button" data-name="Alice">Alice</button>
+            <button class="chip" type="button" data-name="Bob">Bob</button>
           </div>
         </div>
         <p class="scan-card__foot">
-          扫描会把名字拆成单个字符喂给双头字符级 CNN（最多取前 8 个字符）：一个头判断「像不像百合」，另一个头区分三个频道。结果纯属随机巧合。
+          扫描会把名字拆成最多 12 个字符（中文、拉丁字母、混输都可以，拉丁字母自动转小写）喂给多头字符级 CNN，
+          分别给出百合指数、性别倾向、ACG 属性和作品倾向。结果纯属随机巧合。
         </p>
       </section>
 
@@ -91,10 +94,10 @@
         <h2 class="error-card__title" id="error-title">模型加载失败</h2>
         <p class="error-card__text" id="error-text"></p>
         <p class="error-card__hint" id="error-hint">
-          本地预览：先运行 <code>node web/make_mock_model_v2.mjs</code> 生成调试权重，把
-          <code>web/mock-model-v2.json</code> 复制成 <code>web/model.json</code>，再通过 HTTP 服务打开本页（不能直接双击
-          HTML）。正式站点由训练脚本导出 v2 双头 <code>web/model.json</code>；如果模型还是旧版
-          <code>baihe-charcnn-v1</code>，会提示格式不匹配，等 Lead 覆盖即可。
+          本地预览：先运行 <code>node web/make_mock_model_v3.mjs</code> 生成调试权重，把
+          <code>web/mock-model-v3.json</code> 复制成 <code>web/model.json</code>，再通过 HTTP 服务打开本页（不能直接双击
+          HTML）。正式站点由训练脚本导出 v3 多头 <code>web/model.json</code>；如果模型还是旧版
+          <code>baihe-dualhead-v2</code>，会提示格式不匹配，等 Lead 覆盖即可。
         </p>
         <button class="ghost-btn" id="retry-load" type="button">重新加载模型</button>
       </section>
@@ -128,82 +131,106 @@
             <ul class="scan-notes" id="scan-notes" hidden></ul>
           </div>
         </div>
+      </section>
 
-        <div class="bars-block">
-          <div class="bars-head">
-            <h3 class="bars__title">三类概率（辅助参考）</h3>
-            <p class="bars__note">来自另一个头：三分类只比瞎猜好一点，真正的「百合指数」看上面的大圆环。</p>
+      <div class="dims" id="dims" hidden>
+        <section class="card head-card" data-head-card="gender" aria-labelledby="gender-title">
+          <div class="head-card__head">
+            <h3 class="head-card__title" id="gender-title">性别倾向</h3>
+            <p class="head-card__note">来自真实姓名统计，只是用字倾向，不是身份判断。</p>
           </div>
-          <div class="bars" aria-label="三类概率（辅助参考）">
-            <div class="bar" data-key="baihe">
-              <div class="bar__head">
-                <span class="bar__name"><span class="bar__dot bar__dot--baihe" aria-hidden="true"></span>百合</span>
-                <span class="bar__pct" id="pct-baihe">--%</span>
-              </div>
-              <div class="bar__track"><span class="bar__fill" id="fill-baihe"></span></div>
-            </div>
-            <div class="bar" data-key="purelove">
-              <div class="bar__head">
-                <span class="bar__name"><span class="bar__dot bar__dot--purelove" aria-hidden="true"></span>纯爱(BL)</span>
-                <span class="bar__pct" id="pct-purelove">--%</span>
-              </div>
-              <div class="bar__track"><span class="bar__fill" id="fill-purelove"></span></div>
-            </div>
-            <div class="bar" data-key="romance">
-              <div class="bar__head">
-                <span class="bar__name"><span class="bar__dot bar__dot--romance" aria-hidden="true"></span>言情(BG)</span>
-                <span class="bar__pct" id="pct-romance">--%</span>
-              </div>
-              <div class="bar__track"><span class="bar__fill" id="fill-romance"></span></div>
-            </div>
-          </div>
-        </div>
+          <div class="bars" id="gender-bars" data-head="gender"></div>
+        </section>
 
-        <div class="contrib">
-          <div class="contrib__head">
-            <h3 class="contrib__title">逐字贡献</h3>
+        <section class="card head-card" data-head-card="genre" aria-labelledby="genre-title">
+          <div class="head-card__head">
+            <h3 class="head-card__title" id="genre-title">作品倾向</h3>
+            <p class="head-card__note">来自虚构小说频道（晋江文学城），只反映名字用字统计。</p>
+          </div>
+          <div class="bars" id="genre-bars" data-head="genre"></div>
+        </section>
+
+        <section class="card head-card head-card--wide" data-head-card="expression" aria-labelledby="expression-title">
+          <div class="head-card__head">
+            <h3 class="head-card__title" id="expression-title">ACG 属性</h3>
+            <p class="head-card__note">来自萌娘百科角色分类，只对 ACG 角色名有参考价值。</p>
+          </div>
+          <div class="bars" id="expression-bars" data-head="expression"></div>
+        </section>
+      </div>
+
+      <section class="card contrib-card" id="contrib-card" aria-labelledby="contrib-title" hidden>
+        <div class="contrib__head">
+          <div class="contrib__intro">
+            <h3 class="contrib__title" id="contrib-title">逐字贡献</h3>
             <p class="contrib__note">
-              把该字换成「未知字」后重算，百合指数的变化。<strong>正值</strong> = 这个字在给百合指数加码，负值 = 在拖后腿。
+              把该字换成「未知字」后重算，看目标概率的变化。<strong>正值</strong> = 这个字在加码，负值 = 在拖后腿。
             </p>
           </div>
-          <div class="contrib__list" id="contrib-list" aria-label="逐字贡献"></div>
+          <div class="seg" role="group" aria-label="逐字贡献的目标">
+            <button class="seg-btn is-active" type="button" data-contrib-head="yuri" aria-pressed="true">百合指数</button>
+            <button class="seg-btn" type="button" data-contrib-head="gender" aria-pressed="false">性别</button>
+            <button class="seg-btn" type="button" data-contrib-head="expression" aria-pressed="false">ACG 属性</button>
+          </div>
         </div>
+        <p class="contrib__target" id="contrib-target"></p>
+        <div class="contrib__list" id="contrib-list" aria-label="逐字贡献"></div>
       </section>
 
       <section class="card model-card" aria-labelledby="model-title">
         <div class="model-card__head">
           <h2 class="model-card__title" id="model-title">模型卡</h2>
-          <span class="tag" id="format-tag">baihe-dualhead-v2</span>
+          <span class="tag" id="format-tag">baihe-multi-v3</span>
         </div>
-        <dl class="stats">
-          <div class="stat">
-            <dt>训练样本数</dt>
-            <dd id="stat-n-train">待训练</dd>
+
+        <div class="metrics" id="metrics-grid">
+          <div class="metric">
+            <h3 class="metric__title">性别倾向 <span class="metric__sub">真实姓名 · 2 类</span></h3>
+            <dl class="metric__dl">
+              <div class="metric__row"><dt>准确率</dt><dd id="metric-gender-acc">待训练</dd></div>
+              <div class="metric__row"><dt>平衡准确率</dt><dd id="metric-gender-bal">待训练</dd></div>
+              <div class="metric__row"><dt>样本数</dt><dd id="metric-gender-n">待训练</dd></div>
+            </dl>
           </div>
-          <div class="stat">
-            <dt>三分类测试准确率</dt>
-            <dd id="stat-test-acc">待训练</dd>
+          <div class="metric">
+            <h3 class="metric__title">ACG 属性 <span class="metric__sub">萌娘百科 · 4 类</span></h3>
+            <dl class="metric__dl">
+              <div class="metric__row"><dt>准确率</dt><dd id="metric-expression-acc">待训练</dd></div>
+              <div class="metric__row"><dt>平衡准确率</dt><dd id="metric-expression-bal">待训练</dd></div>
+              <div class="metric__row"><dt>样本数</dt><dd id="metric-expression-n">待训练</dd></div>
+            </dl>
           </div>
-          <div class="stat">
-            <dt>百合判定平衡准确率</dt>
-            <dd id="stat-bin-balanced-acc">待训练</dd>
+          <div class="metric">
+            <h3 class="metric__title">作品倾向 <span class="metric__sub">小说频道 · 3 类</span></h3>
+            <dl class="metric__dl">
+              <div class="metric__row"><dt>准确率</dt><dd id="metric-genre-acc">待训练</dd></div>
+              <div class="metric__row"><dt>瞎猜基线</dt><dd id="metric-genre-base">33%</dd></div>
+              <div class="metric__row"><dt>样本数</dt><dd id="metric-genre-n">待训练</dd></div>
+            </dl>
           </div>
-          <div class="stat">
-            <dt>随机基线</dt>
-            <dd id="stat-baseline">33%</dd>
+          <div class="metric">
+            <h3 class="metric__title">百合判定 <span class="metric__sub">二分类 · 2 类</span></h3>
+            <dl class="metric__dl">
+              <div class="metric__row"><dt>平衡准确率</dt><dd id="metric-yuri-bal">待训练</dd></div>
+              <div class="metric__row"><dt>样本数</dt><dd id="metric-yuri-n">待训练</dd></div>
+            </dl>
           </div>
-        </dl>
+        </div>
+
         <p class="model-card__line" id="dataset-line">训练数据：待接入</p>
-        <p class="model-card__line">数据来源：晋江文学城作品库主角名</p>
+        <p class="model-card__line">数据来源：晋江文学城作品库主角名 · 真实姓名用字统计 · 萌娘百科 ACG 角色分类</p>
         <p class="model-card__line model-card__line--muted">
-          结构：共享编码器（字向量 32 + 位置向量 8 → Conv k=1/2/3 + BatchNorm → ReLU → max/mean 双池化 → 拼首末字向量 576 维 → FC 128）+ 双头（三分类 / 百合 vs 非百合）。全部推理在你的浏览器本地完成。
+          结构：共享编码器（字向量 32 + 位置向量 8，最多 12 字 → Conv k=1/2/3 + BatchNorm → ReLU → max/mean 双池化
+          → 拼首末字向量 576 维 → FC 160）+ 四头（性别 2 类 / ACG 属性 4 类 / 作品 3 类 / 百合判定 2 类）。
+          全部推理在你的浏览器本地完成。
         </p>
         <p class="model-card__line model-card__line--muted">
-          三分类只比瞎猜好一点；二分类头（百合指数）是主力，但它仍然只是个玩具，别当真。
+          性取向不预测真人；这些都是名字用字统计玩具。
         </p>
         <p class="disclaimer">
           <span class="disclaimer__icon" aria-hidden="true">⚠️</span>
-          本工具纯属娱乐，训练数据仅为虚构小说角色名，不能也不应用于判断任何真实个人的性取向。
+          本工具纯属娱乐：训练数据来自虚构小说角色名、真实姓名用字统计与 ACG 角色分类样本，仅用于名字用字统计玩具；
+          不针对真实个人的性取向或性别身份做判断。性别 / 属性输出只是名字用字倾向，真人请尊重本人自我认同。
         </p>
         <div class="model-card__links">
           <a class="github-link" href="https://github.com/HuaDe520/baihe-radar" target="_blank" rel="noopener noreferrer">

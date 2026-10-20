@@ -1,0 +1,27 @@
+{
+  "gender_zh": {
+    "acc": 0.9557,
+    "balanced": 0.9557,
+    "n": 4000
+  },
+  "gender_foreign": {
+    "acc": 0.8905,
+    "balanced": 0.8905,
+    "n": 4000
+  },
+  "expression": {
+    "acc": 0.6667,
+    "balanced": 0.4017,
+    "n": 78
+  },
+  "genre": {
+    "acc": 0.4354,
+    "balanced": 0.4353,
+    "n": 1810
+  },
+  "yuri": {
+    "acc": 0.6696,
+    "balanced": 0.538,
+    "n": 1810
+  }
+}

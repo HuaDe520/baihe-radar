@@ -1,26 +1,34 @@
 /**
- * 百合雷达 BAIHE RADAR · 前端推理引擎 v2（ES module）
+ * 百合雷达 BAIHE RADAR · 前端推理引擎 v3（ES module）
  *
- * 严格复刻 `train/train_v2.py`（DualHead）导出的 baihe-dualhead-v2 权重：
- *   去空白 → 按 Unicode 码点取前 max_len 个字符 → vocab 查表（未登录用 unk_id）
- *   → 不足补 pad_id → X[i] = concat(emb[ids[i]] 32 维, pos[i] 8 维)（每位置 40 维）
- *   → 三路 conv(k=1/2/3, 行主序 W[c][j*40+e]) → BatchNorm → ReLU → 每路 max + mean 双池化
- *   → 按分支顺序拼 [max, mean] → 512 维 → 再拼首字 emb 与末个非 pad 字 emb（各 32）→ 576 维
- *   → fc(128) + ReLU → 双头：out3 → softmax 三分类；out2 → softmax 二分类（[非百合, 百合]）
+ * 严格复刻 `train/train_v3.py`（MultiHead）导出的 baihe-multi-v3 权重：
+ *   输入：trim → 去掉所有空白 → Latin 字母转小写 → 按 Unicode 码点取前 max_len(=12) 个字符
+ *        → vocab 查表（未登录用 unk_id=1）→ 不足补 pad_id=0 到 12
+ *   编码：X[i] = concat(emb[ids[i]] 32 维, pos[i] 8 维) = 每位置 40 维（concat，不是相加）
+ *   卷积：三路 conv k=1/2/3（W[c][j*40+e]）→ BatchNorm(gamma,beta,mean,var,bn_eps) → ReLU
+ *        → 每路 max + mean 双池化 → 按分支顺序拼 [max, mean] = 512 维
+ *   特征：512 + 首字 emb 32 + 末个非 pad 字 emb 32 = 576 → fc(160) + ReLU
+ *   四头：gender(2) / expression(4) / genre(3) / yuri(2) 各自 Linear + softmax
  *
  * 纯娱乐向玩具；本文件只做推理，不含任何 UI。
  *
  * 对外接口：
- *   loadModel(url)                    → Promise<Model>（浏览器 fetch 模型 JSON）
- *   buildModel(json)                  → Model（同步构建，Node 对拍/测试用）
- *   predict(model, rawInput)          → {probs3, probs2, baiheIndex, chars, ids, truncated,
- *                                        inputLength, unknownChars}
- *   occlusionAttribution(model, raw)  → [{index, char, delta, indexWithout}, ...]
- *   normalizeInput(raw)               → string（去空白；空输入抛「请输入名字」）
+ *   loadModel(url)                                  → Promise<Model>
+ *   buildModel(json)                                → Model
+ *   predict(model, rawInput)                        → {probs:{gender,expression,genre,yuri},
+ *                                                       baiheIndex, chars, ids, truncated,
+ *                                                       inputLength, unknownChars}
+ *   occlusionAttribution(model, raw, head, classIndex)
+ *                                                   → [{index, char, delta, probWithout,
+ *                                                       head, classIndex, className}]
+ *   normalizeInput(raw)                             → string
  */
 
-/** v2 权重格式标识（强制校验，避免误把旧 v1 权重当 v2 加载） */
-export const MODEL_FORMAT = 'baihe-dualhead-v2';
+/** v3 权重格式标识（强制校验，避免误把旧权重当 v3 加载） */
+export const MODEL_FORMAT = 'baihe-multi-v3';
+
+/** 四个头的固定顺序（用于展示与校验） */
+export const HEAD_KEYS = ['gender', 'expression', 'genre', 'yuri'];
 
 function fail(message) {
   throw new Error(message);
@@ -87,9 +95,18 @@ function readBnBlock(block, ch, label) {
   };
 }
 
+function readHeadConfig(headKey, raw) {
+  if (!raw || typeof raw !== 'object') fail(`模型 config.heads.${headKey} 缺失`);
+  const classes = Array.isArray(raw.classes) ? raw.classes.slice() : [];
+  if (classes.length === 0) fail(`模型 config.heads.${headKey}.classes 为空`);
+  const namesZh =
+    Array.isArray(raw.names_zh) && raw.names_zh.length === classes.length ? raw.names_zh.slice() : classes.slice();
+  return { key: headKey, classes, namesZh, numClasses: classes.length };
+}
+
 /**
  * 由模型 JSON 构建可复用的推理模型对象（同步）。
- * @param {object} json  web/model.json 的内容（必须 format = baihe-dualhead-v2）
+ * @param {object} json  web/model.json 的内容（必须 format = baihe-multi-v3）
  * @returns {object}
  */
 export function buildModel(json) {
@@ -99,7 +116,7 @@ export function buildModel(json) {
   if (json.format !== MODEL_FORMAT) {
     fail(
       `模型格式不匹配：期望 ${MODEL_FORMAT}，实际 ${json.format || '缺失'}。` +
-        '旧版 v1 权重（baihe-charcnn-v1）已不再支持，请等待 Lead 导出 v2 双头权重。',
+        '旧版权重（baihe-dualhead-v2 / baihe-charcnn-v1）已不再支持，请等待 Lead 导出 v3 多头权重。',
     );
   }
   const config = json.config;
@@ -111,37 +128,20 @@ export function buildModel(json) {
   const embDim = readInt(config.emb_dim, 'emb_dim', { min: 1 });
   const posDim = readInt(config.pos_dim, 'pos_dim', { min: 1 });
   const hidden = readInt(config.hidden, 'hidden', { min: 1 });
-  const numClasses = readInt(config.num_classes, 'num_classes', { min: 1 });
-  const numBinary = readInt(config.num_binary, 'num_binary', { min: 1 });
   const padId = readInt(config.pad_id, 'pad_id', { min: 0 });
   const unkId = readInt(config.unk_id, 'unk_id', { min: 0 });
   const bnEps = readNumber(config.bn_eps, 'bn_eps', { min: 0 });
   if (!(bnEps > 0)) fail(`模型 config.bn_eps 必须大于 0：${String(config.bn_eps)}`);
 
-  const classes = Array.isArray(config.classes) ? config.classes.slice() : [];
-  if (classes.length !== numClasses) {
-    fail(`模型 config.classes 数量不符：期望 ${numClasses} 个，实际 ${classes.length} 个`);
+  const rawHeads = config.heads;
+  if (!rawHeads || typeof rawHeads !== 'object') {
+    fail('模型 config.heads 缺失');
   }
-  const classNamesZh =
-    Array.isArray(config.class_names_zh) && config.class_names_zh.length === numClasses
-      ? config.class_names_zh.slice()
-      : classes.slice();
-
-  const binaryLabels = Array.isArray(config.binary_labels) ? config.binary_labels.slice() : [];
-  if (binaryLabels.length !== numBinary) {
-    fail(`模型 config.binary_labels 数量不符：期望 ${numBinary} 个，实际 ${binaryLabels.length} 个`);
+  for (const key of HEAD_KEYS) {
+    if (!rawHeads[key]) fail(`模型 config.heads 缺少 ${key} 头`);
   }
-  const binaryBaiheIndex = binaryLabels.indexOf('baihe');
-  if (binaryBaiheIndex < 0) {
-    fail('模型 config.binary_labels 缺少 baihe，无法计算百合指数');
-  }
-  let baiheIndex3 = classes.indexOf('baihe');
-  if (baiheIndex3 < 0) baiheIndex3 = 0;
-
-  const feat = Array.isArray(config.feat) ? config.feat.slice() : ['first_last_emb'];
-  if (!feat.includes('first_last_emb')) {
-    fail(`模型 config.feat 缺少 first_last_emb：${JSON.stringify(config.feat)}`);
-  }
+  const headOrder = Object.keys(rawHeads).filter((key) => HEAD_KEYS.includes(key));
+  for (const key of HEAD_KEYS) if (!headOrder.includes(key)) headOrder.push(key);
 
   if (!Array.isArray(json.vocab) || json.vocab.length < 2) {
     fail('模型 vocab 缺失或过短');
@@ -204,10 +204,26 @@ export function buildModel(json) {
   const hiddenIn = baseDim + 2 * embDim; // 512 + 32 + 32 = 576
   const fcW = readWeightBlock(weights.fc && weights.fc.W, [hidden, hiddenIn], 'fc.W');
   const fcB = readWeightBlock(weights.fc && weights.fc.b, [hidden], 'fc.b');
-  const out3W = readWeightBlock(weights.out3 && weights.out3.W, [numClasses, hidden], 'out3.W');
-  const out3B = readWeightBlock(weights.out3 && weights.out3.b, [numClasses], 'out3.b');
-  const out2W = readWeightBlock(weights.out2 && weights.out2.W, [numBinary, hidden], 'out2.W');
-  const out2B = readWeightBlock(weights.out2 && weights.out2.b, [numBinary], 'out2.b');
+
+  const rawHeadsWeights = weights.heads;
+  if (!rawHeadsWeights || typeof rawHeadsWeights !== 'object') {
+    fail('模型权重 heads 缺失');
+  }
+  const heads = {};
+  for (const key of headOrder) {
+    const headConfig = readHeadConfig(key, rawHeads[key]);
+    const block = rawHeadsWeights[key];
+    if (!block || typeof block !== 'object') fail(`模型权重 heads.${key} 缺失`);
+    heads[key] = {
+      ...headConfig,
+      W: readWeightBlock(block.W, [headConfig.numClasses, hidden], `heads.${key}.W`),
+      b: readWeightBlock(block.b, [headConfig.numClasses], `heads.${key}.b`),
+    };
+  }
+
+  const yuri = heads.yuri;
+  let yuriBaiheIndex = yuri.classes.indexOf('baihe');
+  if (yuriBaiheIndex < 0) yuriBaiheIndex = 1;
 
   return {
     format: json.format,
@@ -216,16 +232,13 @@ export function buildModel(json) {
       emb_dim: embDim,
       pos_dim: posDim,
       hidden,
-      num_classes: numClasses,
-      num_binary: numBinary,
+      bn_eps: bnEps,
       pad_id: padId,
       unk_id: unkId,
-      bn_eps: bnEps,
       conv: convSpec.map((spec, i) => ({ k: conv[i].k, ch: conv[i].ch })),
-      classes,
-      class_names_zh: classNamesZh,
-      binary_labels: binaryLabels,
-      feat,
+      heads: Object.fromEntries(
+        headOrder.map((key) => [key, { classes: heads[key].classes, names_zh: heads[key].namesZh }]),
+      ),
     },
     vocab,
     vocabSize,
@@ -236,22 +249,17 @@ export function buildModel(json) {
     hiddenIn,
     fcW,
     fcB,
-    out3W,
-    out3B,
-    out2W,
-    out2B,
+    heads,
+    headOrder,
     maxLen,
     embDim,
     posDim,
     inputDim,
     hidden,
-    numClasses,
-    numBinary,
     padId,
     unkId,
     bnEps,
-    baiheIndex3,
-    binaryBaiheIndex,
+    yuriBaiheIndex,
     metrics: json.metrics && typeof json.metrics === 'object' ? json.metrics : null,
     dataset: json.dataset && typeof json.dataset === 'object' ? json.dataset : null,
   };
@@ -285,11 +293,16 @@ export async function loadModel(url = './model.json') {
 }
 
 /**
- * 清洗输入：取字符串、去掉所有空白字符（\s）；清洗后为空 → 抛「请输入名字」。
+ * 清洗输入（v3 规范）：
+ *   1) 取字符串并 trim
+ *   2) 去掉所有空白字符（\s）
+ *   3) Latin 字母统一转小写
+ *   4) 清洗后为空 → 抛「请输入名字」
+ * 返回清洗后的字符串（不截断；截断在 predict 里按码点做）。
  */
 export function normalizeInput(rawInput) {
   const text = rawInput == null ? '' : String(rawInput);
-  const cleaned = text.replace(/\s+/g, '');
+  const cleaned = text.trim().replace(/\s+/g, '').toLowerCase();
   if (!cleaned) fail('请输入名字');
   return cleaned;
 }
@@ -316,18 +329,9 @@ function softmax(logits) {
  * 输入 ids 长度 = max_len，已补 pad。
  */
 function forwardFromIds(model, ids) {
-  const {
-    maxLen: L,
-    embDim: E,
-    posDim: P,
-    inputDim: D,
-    hidden: H,
-    hiddenIn,
-    padId,
-    bnEps,
-  } = model;
+  const { maxLen: L, embDim: E, posDim: P, inputDim: D, hidden: H, hiddenIn, padId, bnEps } = model;
 
-  // 1) 每位置特征 X[i] = concat(emb[ids[i]], pos[i]) → 8 × 40
+  // 1) 每位置特征 X[i] = concat(emb[ids[i]], pos[i]) → 12 × 40
   const X = new Float64Array(L * D);
   for (let i = 0; i < L; i += 1) {
     const id = ids[i];
@@ -374,10 +378,8 @@ function forwardFromIds(model, ids) {
   // 3) 首字 emb + 末个非 pad 字 emb（各 32 维）
   let lastIndex = L - 1;
   while (lastIndex > 0 && ids[lastIndex] === padId) lastIndex -= 1;
-  const firstId = ids[0];
-  const lastId = ids[lastIndex];
-  const firstBase = firstId * E;
-  const lastBase = lastId * E;
+  const firstBase = ids[0] * E;
+  const lastBase = ids[lastIndex] * E;
   for (let e = 0; e < E; e += 1) {
     pooled[offset + e] = model.emb[firstBase + e];
     pooled[offset + E + e] = model.emb[lastBase + e];
@@ -392,28 +394,21 @@ function forwardFromIds(model, ids) {
     h[o] = z > 0 ? z : 0;
   }
 
-  // 5) 双头
-  const logits3 = new Float64Array(model.numClasses);
-  for (let o = 0; o < model.numClasses; o += 1) {
-    let z = model.out3B[o];
-    const wBase = o * H;
-    for (let i = 0; i < H; i += 1) z += model.out3W[wBase + i] * h[i];
-    logits3[o] = z;
-  }
-  const logits2 = new Float64Array(model.numBinary);
-  for (let o = 0; o < model.numBinary; o += 1) {
-    let z = model.out2B[o];
-    const wBase = o * H;
-    for (let i = 0; i < H; i += 1) z += model.out2W[wBase + i] * h[i];
-    logits2[o] = z;
+  // 5) 四头各自 Linear + softmax
+  const probs = {};
+  for (const key of model.headOrder) {
+    const head = model.heads[key];
+    const out = new Float64Array(head.numClasses);
+    for (let o = 0; o < head.numClasses; o += 1) {
+      let z = head.b[o];
+      const wBase = o * H;
+      for (let i = 0; i < H; i += 1) z += head.W[wBase + i] * h[i];
+      out[o] = z;
+    }
+    probs[key] = softmax(out);
   }
 
-  return {
-    probs3: softmax(logits3),
-    probs2: softmax(logits2),
-    logits3: Array.from(logits3),
-    logits2: Array.from(logits2),
-  };
+  return { probs };
 }
 
 /** 把输入清洗/编码成 ids（内部函数）。 */
@@ -424,13 +419,13 @@ function encodeInput(model, rawInput) {
   const truncated = codePoints.length > maxLen;
   const chars = codePoints.slice(0, maxLen);
 
-  const ids = new Array(maxLen).fill(model.config.pad_id);
+  const ids = new Array(maxLen).fill(model.padId);
   const unknownChars = [];
   for (let i = 0; i < chars.length; i += 1) {
     const char = chars[i];
     const id = model.charIndex.get(char);
     if (id === undefined) {
-      ids[i] = model.config.unk_id;
+      ids[i] = model.unkId;
       unknownChars.push(char);
     } else {
       ids[i] = id;
@@ -441,24 +436,23 @@ function encodeInput(model, rawInput) {
 }
 
 /**
- * 预测一个名字。
+ * 预测一个名字的四个头概率。
  *
  * @param {object} model     buildModel / loadModel 得到的模型
- * @param {string} rawInput  原始输入（可含空白，可超长）
- * @returns {{probs3: number[], probs2: number[], baiheIndex: number, chars: string[],
- *            ids: number[], truncated: boolean, inputLength: number, unknownChars: string[]}}
- *   probs3  三分类概率，顺序 = config.classes（契约固定 [baihe, purelove, romance]）
- *   probs2  二分类概率，顺序 = config.binary_labels（契约固定 [not_baihe, baihe]）
- *   baiheIndex = probs2[百合位] = P(百合)，即页面大号「百合指数」（0~1）
+ * @param {string} rawInput  原始输入（可含空白/大小写；中文、拉丁字母、混输均可）
+ * @returns {{probs: {gender: number[], expression: number[], genre: number[], yuri: number[]},
+ *            baiheIndex: number, chars: string[], ids: number[], truncated: boolean,
+ *            inputLength: number, unknownChars: string[]}}
+ *   probs.* 顺序与 config.heads.*.classes 一致；
+ *   baiheIndex = probs.yuri[百合位] = P(百合)，即页面大号「百合指数」（0~1）。
  */
 export function predict(model, rawInput) {
   if (!model || !model.emb) fail('模型未加载');
   const { ids, chars, truncated, inputLength, unknownChars } = encodeInput(model, rawInput);
-  const { probs3, probs2 } = forwardFromIds(model, ids);
+  const { probs } = forwardFromIds(model, ids);
   return {
-    probs3,
-    probs2,
-    baiheIndex: probs2[model.binaryBaiheIndex],
+    probs,
+    baiheIndex: probs.yuri[model.yuriBaiheIndex],
     chars,
     ids,
     truncated,
@@ -468,30 +462,57 @@ export function predict(model, rawInput) {
 }
 
 /**
- * 逐字遮挡归因：把第 i 个字符替换成 unk_id 后重新前向，返回「百合指数」的变化。
+ * 解析遮挡归因的目标类别：
+ *   显式给 classIndex → 用它；
+ *   否则 head='yuri' 用「百合」类；其它头用原输入下该头的 argmax 类。
+ */
+function resolveHeadTarget(model, probs, headKey, classIndex) {
+  const head = model.heads[headKey];
+  if (!head) fail(`未知的输出头：${headKey}（可选：${model.headOrder.join(' / ')}）`);
+  const values = probs[headKey];
+  let index;
+  if (Number.isInteger(classIndex) && classIndex >= 0 && classIndex < head.numClasses) {
+    index = classIndex;
+  } else if (headKey === 'yuri') {
+    index = model.yuriBaiheIndex;
+  } else {
+    index = 0;
+    for (let i = 1; i < values.length; i += 1) if (values[i] > values[index]) index = i;
+  }
+  return { head, index, value: values[index] };
+}
+
+/**
+ * 逐字遮挡归因：把第 i 个字符替换成 unk_id 后重新前向，返回指定头、指定类别概率的变化。
  *
- * delta = P(百合 | 原输入) − P(百合 | 该字换成 <unk>)
- *   delta > 0 → 这个字在给百合指数加分；delta < 0 → 在拖后腿
+ * delta = P(target | 原输入) − P(target | 该字换成 <unk>)
+ *   delta > 0 → 这个字在给目标概率加分；delta < 0 → 在拖后腿
  *
  * @param {object} model
  * @param {string} rawInput
- * @returns {Array<{index:number, char:string, delta:number, indexWithout:number}>}
+ * @param {string} [head='yuri']           'yuri' | 'gender' | 'expression' | 'genre'
+ * @param {number|null} [classIndex=null]  目标类别下标；缺省见 resolveHeadTarget
+ * @returns {Array<{index:number, char:string, delta:number, probWithout:number,
+ *                  head:string, classIndex:number, className:string}>}
  */
-export function occlusionAttribution(model, rawInput) {
+export function occlusionAttribution(model, rawInput, head = 'yuri', classIndex = null) {
   const base = predict(model, rawInput);
-  const unkId = model.config.unk_id;
-  const baseIndex = base.baiheIndex;
+  const { head: headDef, index, value: baseProb } = resolveHeadTarget(model, base.probs, head, classIndex);
+  const unkId = model.unkId;
 
-  return base.chars.map((char, index) => {
+  return base.chars.map((char, position) => {
     const occludedIds = base.ids.slice();
-    occludedIds[index] = unkId;
+    occludedIds[position] = unkId;
     const occluded = forwardFromIds(model, occludedIds);
-    const indexWithout = occluded.probs2[model.binaryBaiheIndex];
+    const probWithout = occluded.probs[head][index];
     return {
-      index,
+      index: position,
       char,
-      delta: baseIndex - indexWithout,
-      indexWithout,
+      delta: baseProb - probWithout,
+      probWithout,
+      head,
+      classIndex: index,
+      className: headDef.namesZh[index] || headDef.classes[index],
     };
   });
 }
