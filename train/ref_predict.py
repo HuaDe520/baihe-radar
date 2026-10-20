@@ -40,7 +40,9 @@ def predict(model, raw):
         for p in range(cfg["max_len"] - k + 1):
             zs.append(b + Wc @ X[p:p + k].reshape(-1))
         z = np.stack(zs, 0)          # (positions, C)
-        pooled.append(np.maximum(0.0, z.max(0)))
+        relu = np.maximum(0.0, z)
+        pooled.append(relu.max(0))   # ReLU(max_p z)
+        pooled.append(relu.mean(0))  # ReLU(mean_p z)
     h0 = np.concatenate(pooled)
 
     fc = W["fc"]

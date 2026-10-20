@@ -185,7 +185,7 @@
         <p class="model-card__line" id="dataset-line">训练数据：待接入</p>
         <p class="model-card__line">数据来源：晋江文学城作品库主角名</p>
         <p class="model-card__line model-card__line--muted">
-          结构：字符级 CNN（Conv k=1/2/3 → ReLU + 最大池化 → 拼接 112 维 → FC 64 → 3 分类 softmax）。全部推理在你的浏览器本地完成。
+          结构：字符级 CNN（Conv k=1/2/3 → ReLU → max/mean 双池化 → 拼接 224 维 → FC 64 → 3 分类 softmax）。全部推理在你的浏览器本地完成。
         </p>
         <p class="disclaimer">
           <span class="disclaimer__icon" aria-hidden="true">⚠️</span>

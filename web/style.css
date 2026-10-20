@@ -52,7 +52,7 @@ body {
     radial-gradient(110% 80% at 94% 6%, rgba(139, 92, 246, 0.22), transparent 58%),
     radial-gradient(130% 100% at 50% 112%, rgba(99, 102, 241, 0.18), transparent 60%),
     linear-gradient(165deg, #1d1035 0%, #170b2e 40%, #11071e 100%);
-  background-attachment: fixed;
+  background-size: cover;
   -webkit-font-smoothing: antialiased;
 }
 

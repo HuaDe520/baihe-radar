@@ -5,6 +5,7 @@
 输入： data/names_clean.jsonl（{"name","label",...}，label ∈ baihe/purelove/romance）
 输出： web/model.json、train/metrics.json、train/splits.json、train/train_report.md
 """
+import argparse
 import json
 import math
 import random
@@ -68,12 +69,12 @@ def encode(name, v2i):
 
 
 class CharCNN(nn.Module):
-    def __init__(self, vocab_size):
+    def __init__(self, vocab_size, dropout=0.3):
         super().__init__()
         self.emb = nn.Embedding(vocab_size, EMB_DIM, padding_idx=PAD_ID)
         self.convs = nn.ModuleList([nn.Conv1d(EMB_DIM, c, k) for k, c in CONVS])
-        self.drop = nn.Dropout(0.1)
-        self.fc = nn.Linear(sum(c for _, c in CONVS), HIDDEN)
+        self.drop = nn.Dropout(dropout)
+        self.fc = nn.Linear(2 * sum(c for _, c in CONVS), HIDDEN)
         self.out = nn.Linear(HIDDEN, len(LABELS))
 
     def forward(self, x):
@@ -81,7 +82,9 @@ class CharCNN(nn.Module):
         pooled = []
         for conv in self.convs:
             z = conv(e)                                  # B,C,L-k+1
-            pooled.append(torch.relu(z).max(dim=2).values)
+            z = torch.relu(z)
+            pooled.append(z.max(dim=2).values)           # max-pool
+            pooled.append(z.mean(dim=2))                 # mean-pool
         h = torch.cat(pooled, dim=1)
         h = torch.relu(self.fc(self.drop(h)))
         return self.out(h)
@@ -135,8 +138,8 @@ def export(model, vocab, metrics):
     emb = sd["emb.weight"]
     convs = []
     for i, (k, c) in enumerate(CONVS):
-        w = sd[f"convs.{i}.weight"]                   # C,E,k
-        w = w.permute(0, 2, 1).reshape(c, k * EMB_DIM)  # C, k*E 行主序 j*E+e
+        w = sd[f"convs.{i}.weight"]                       # C,E,k
+        w = np.transpose(w, (0, 2, 1)).reshape(c, k * EMB_DIM)  # C, k*E 行主序 j*E+e
         convs.append({"k": k,
                       "W": {"shape": [c, k * EMB_DIM], "data": rounded(w)},
                       "b": {"shape": [c], "data": rounded(sd[f"convs.{i}.bias"])}})
@@ -167,9 +170,19 @@ def export(model, vocab, metrics):
 
 
 def main():
-    torch.manual_seed(SEED)
-    np.random.seed(SEED)
-    random.seed(SEED)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--lr", type=float, default=5e-4)
+    ap.add_argument("--wd", type=float, default=1e-3)
+    ap.add_argument("--dropout", type=float, default=0.3)
+    ap.add_argument("--seed", type=int, default=SEED)
+    ap.add_argument("--epochs", type=int, default=150)
+    ap.add_argument("--patience", type=int, default=30)
+    ap.add_argument("--tag", type=str, default="")
+    args = ap.parse_args()
+
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
 
     rows = load_rows()
     if len(rows) < 300:
@@ -181,7 +194,7 @@ def main():
     label2i = {l: i for i, l in enumerate(LABELS)}
     print("词表大小：", len(vocab))
 
-    train, val, test = stratified_split(rows)
+    train, val, test = stratified_split(rows, seed=args.seed)
     print(f"划分：train={len(train)} val={len(val)} test={len(test)}")
 
     def pack(pairs):
@@ -195,14 +208,16 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("设备：", device)
-    model = CharCNN(len(vocab)).to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
-    lossf = nn.CrossEntropyLoss()
+    model = CharCNN(len(vocab), dropout=args.dropout).to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
+    lossf = nn.CrossEntropyLoss(label_smoothing=0.05)
+    xva_d, yva_d = xva.to(device), yva.to(device)
 
-    best_val, best_state = 1e9, None
-    patience, bad = 25, 0
+    best_val_acc, best_val_loss, best_state, best_epoch = -1.0, 1e9, None, 0
+    patience, bad = args.patience, 0
     bs = 128
-    for epoch in range(1, 201):
+    history = []
+    for epoch in range(1, args.epochs + 1):
         model.train()
         perm = torch.randperm(len(xtr))
         tot, cnt = 0.0, 0
@@ -218,19 +233,25 @@ def main():
             cnt += len(idx)
         model.eval()
         with torch.no_grad():
-            va = lossf(model(xva.to(device)), yva.to(device)).item()
-        if va < best_val - 1e-5:
-            best_val, bad = va, 0
+            vo = model(xva_d)
+            va = lossf(vo, yva_d).item()
+            vacc = (vo.argmax(dim=1) == yva_d).float().mean().item()
+        history.append({"epoch": epoch, "train_loss": round(tot / cnt, 4),
+                        "val_loss": round(va, 4), "val_acc": round(vacc, 4)})
+        improved = vacc > best_val_acc + 1e-6 or (abs(vacc - best_val_acc) <= 1e-6 and va < best_val_loss)
+        if improved:
+            best_val_acc, best_val_loss, best_epoch, bad = vacc, va, epoch, 0
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         else:
             bad += 1
         if epoch % 10 == 0:
-            print(f"epoch {epoch:3d} train_loss={tot / cnt:.4f} val_loss={va:.4f} best={best_val:.4f}")
+            print(f"epoch {epoch:3d} train_loss={tot / cnt:.4f} val_loss={va:.4f} val_acc={vacc:.4f} best_acc={best_val_acc:.4f}")
         if bad >= patience:
-            print(f"早停于 epoch {epoch}")
+            print(f"早停于 epoch {epoch}（best epoch {best_epoch}, val_acc {best_val_acc:.4f}）")
             break
 
     model.load_state_dict(best_state)
+    print(f"最佳验证准确率 {best_val_acc:.4f} @ epoch {best_epoch}")
     model.eval()
     with torch.no_grad():
         pred = model(xte.to(device)).argmax(dim=1).cpu().tolist()
@@ -269,7 +290,7 @@ def main():
 - 数据：{len(rows)} 个主角名（{dict(counts)}），来自晋江文学城作品库主角名字段
 - 词表：{len(vocab)}（pad + unk + {len(vocab) - 2} 个汉字）
 - 划分：train {len(train)} / val {len(val)} / test {len(test)}
-- 模型：字符 embedding {EMB_DIM} + conv k=1/2/3 (32/40/40) + ReLU + global max-pool + FC{HIDDEN} + 输出 3
+- 模型：字符 embedding {EMB_DIM} + conv k=1/2/3 (32/40/40) + ReLU + max/mean 双池化 + FC{HIDDEN} + 输出 3
 - 参数量：约 {sum(p.numel() for p in model.parameters()):,}
 - 测试集准确率：**{acc:.2%}**（多数类基线 {baseline:.2%}，随机基线 33.3%）
 - macro-F1：{macro_f1:.4f}

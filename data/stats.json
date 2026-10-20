@@ -1,5 +1,6 @@
 {
-  "generated_at": "2026-10-20T22:00:14+08:00",
+  "generated_at": "2026-10-20T22:11:58+08:00",
+  "history_note": "2026-10-20 21:53–22:11：探针/试跑约 2 分钟 → 首次全量抓取约 8 分钟（约 3700 次详情请求，覆盖 1500–1700 本/类）→ 按最终清洗规则离线重建 + 补量约 1 分钟。最终成功解析 4909 本（丢弃 6 本：无 Keywords 2、串类 4）；网络抓取总计约 11 分钟，远低于契约 45 分钟上限。首轮全量早于运行元数据启用，故上方「累计」仅统计启用后的轮次。",
   "source": "晋江文学城作品库 https://www.jjwxc.net/bookbase.php (gb18030/gzip)",
   "detail_url_template": "https://www.jjwxc.net/onebook.php?novelid={novelid}",
   "labels": {
@@ -20,20 +21,20 @@
     }
   },
   "by_label": {
-    "baihe": 593,
-    "purelove": 559,
-    "romance": 545
+    "baihe": 2458,
+    "purelove": 2465,
+    "romance": 2447
   },
   "books": {
-    "baihe": 355,
-    "purelove": 355,
-    "romance": 355
+    "baihe": 1487,
+    "purelove": 1692,
+    "romance": 1730
   },
-  "ambiguous_names": 8,
+  "ambiguous_names": 78,
   "pages_per_label": {
-    "baihe": 4,
-    "purelove": 4,
-    "romance": 4
+    "baihe": 20,
+    "purelove": 20,
+    "romance": 20
   },
   "views_per_label": {
     "baihe": [
@@ -41,15 +42,15 @@
         "name": "已完结",
         "isfinish": 1,
         "sortType": 0,
-        "pages": 2,
-        "ids": 200
+        "pages": 10,
+        "ids": 1000
       },
       {
         "name": "连载中",
         "isfinish": 2,
         "sortType": 0,
-        "pages": 2,
-        "ids": 200
+        "pages": 10,
+        "ids": 1000
       }
     ],
     "purelove": [
@@ -57,15 +58,15 @@
         "name": "已完结",
         "isfinish": 1,
         "sortType": 0,
-        "pages": 2,
-        "ids": 200
+        "pages": 10,
+        "ids": 1000
       },
       {
         "name": "连载中",
         "isfinish": 2,
         "sortType": 0,
-        "pages": 2,
-        "ids": 200
+        "pages": 10,
+        "ids": 1000
       }
     ],
     "romance": [
@@ -73,77 +74,107 @@
         "name": "已完结",
         "isfinish": 1,
         "sortType": 0,
-        "pages": 2,
-        "ids": 200
+        "pages": 10,
+        "ids": 1000
       },
       {
         "name": "连载中",
         "isfinish": 2,
         "sortType": 0,
-        "pages": 2,
-        "ids": 200
+        "pages": 10,
+        "ids": 1000
       }
     ]
   },
   "candidate_books": {
-    "baihe": 400,
-    "purelove": 400,
-    "romance": 400
+    "baihe": 2000,
+    "purelove": 2000,
+    "romance": 2000
   },
   "books_attempted": {
-    "baihe": 355,
-    "purelove": 355,
-    "romance": 355
+    "baihe": 1487,
+    "purelove": 1696,
+    "romance": 1732
   },
   "books_discarded": {
     "baihe": 0,
-    "purelove": 0,
-    "romance": 0
+    "purelove": 4,
+    "romance": 2
   },
-  "discard_reasons": {},
+  "discard_reasons": {
+    "genre_mismatch": 4,
+    "no_keywords": 2
+  },
   "raw_name_occurrences": {
-    "baihe": 604,
-    "purelove": 567,
-    "romance": 556
+    "baihe": 2555,
+    "purelove": 2592,
+    "romance": 2555
   },
   "raw_unique_names": {
-    "baihe": 599,
-    "purelove": 563,
-    "romance": 551
+    "baihe": 2513,
+    "purelove": 2510,
+    "romance": 2505
   },
   "protagonist_tokens": {
-    "total": 1900,
-    "accepted": 1727,
-    "rejected": 173
+    "total": 8727,
+    "accepted": 7702,
+    "rejected": 1025
   },
   "ambiguous_by_label_pair": {
-    "purelove+romance": 2,
-    "baihe+romance": 4,
-    "baihe+purelove": 2
+    "baihe+purelove": 20,
+    "baihe+romance": 33,
+    "purelove+romance": 23,
+    "baihe+purelove+romance": 2
   },
   "ambiguous_examples": [
+    "乌皎",
     "乔晚",
+    "云昕",
+    "云青",
+    "保密",
+    "凌昭",
+    "别枝",
+    "十七",
+    "吴忧",
+    "周渡",
+    "商昀",
+    "夏沐",
+    "太宰治",
+    "奚嘉",
+    "姜妙",
+    "姜瓷",
+    "姜茶",
+    "宁知",
+    "安室透",
+    "宋玦",
     "很多",
-    "很多人",
-    "江绪",
-    "沈清秋",
-    "沈韵",
-    "祁言",
-    "秦筝"
+    "扶苏",
+    "方执",
+    "时岁",
+    "时序",
+    "时欢",
+    "明砚",
+    "未定",
+    "林昼",
+    "林望舒"
   ],
   "network": {
-    "list_and_detail_requests": 0,
-    "detail_requests_this_run": 0,
-    "bytes_read": 0,
-    "retries": 0,
+    "this_run_requests": 0,
+    "this_run_detail_requests": 0,
+    "this_run_elapsed_sec": 0.0,
+    "cumulative_requests": 270,
+    "cumulative_bytes_read": 5110623,
+    "cumulative_retries": 0,
     "forbidden_403": 0,
+    "crawl_runs": 1,
+    "cumulative_elapsed_sec": 42.0,
     "aborted": false,
     "abort_reason": ""
   },
   "params": {
     "pages_per_view": 10,
     "views": 2,
-    "target_per_label": 2400,
+    "target_per_label": 2500,
     "workers": 4,
     "retries": 3,
     "timeout_sec": 25,
@@ -153,7 +184,7 @@
     ],
     "max_seconds": 2400
   },
-  "names_jsonl_rows": 1727,
-  "names_clean_jsonl_rows": 1697,
+  "names_jsonl_rows": 7702,
+  "names_clean_jsonl_rows": 7370,
   "elapsed_sec_this_run": 0.0
 }

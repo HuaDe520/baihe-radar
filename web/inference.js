@@ -150,7 +150,7 @@ export function buildModel(json) {
       W: readF64(branch.W.data, ch * k * embDim, `conv[${i}].W`),
       b: readF64(branch.b.data, ch, `conv[${i}].b`),
     });
-    hiddenIn += ch;
+    hiddenIn += 2 * ch;
   }
 
   if (!weights.fc || !weights.fc.W || !weights.fc.W.data || !weights.fc.b || !weights.fc.b.data) {
@@ -261,14 +261,15 @@ function forwardFromIds(model, ids) {
     for (let e = 0; e < E; e += 1) X[dst + e] = model.emb[src + e];
   }
 
-  // 2) 三路卷积：W[c][j*E + e] 对应窗口第 j 个位置第 e 维
+  // 2) 三路卷积：W[c][j*E + e] 对应窗口第 j 个位置第 e 维；每路同时做 max-pool 与 mean-pool
   const pooled = new Float64Array(hiddenIn);
   let offset = 0;
   for (const branch of model.conv) {
     const { k, ch, W, b } = branch;
     const windows = L - k + 1;
     for (let c = 0; c < ch; c += 1) {
-      let best = -Infinity;
+      let best = 0;
+      let total = 0;
       const wBase = c * k * E;
       for (let p = 0; p < windows; p += 1) {
         let z = b[c];
@@ -278,13 +279,15 @@ function forwardFromIds(model, ids) {
           for (let e = 0; e < E; e += 1) z += W[wOff + e] * X[xBase + e];
         }
         if (z > best) best = z;
+        if (z > 0) total += z;
       }
-      pooled[offset + c] = best > 0 ? best : 0; // ReLU(max_p z)
+      pooled[offset + c] = best;                         // max_p ReLU(z)
+      pooled[offset + ch + c] = total / windows;         // mean_p ReLU(z)
     }
-    offset += ch;
+    offset += 2 * ch;
   }
 
-  // 3) fc: h1 = relu(fc.W · h0 + fc.b)，h0 即 pooled（32+40+40=112 维）
+  // 3) fc: h1 = relu(fc.W · h0 + fc.b)，h0 即 pooled（每路 max+mean，(32+40+40)*2=224 维）
   const h1 = new Float64Array(model.hidden);
   for (let o = 0; o < model.hidden; o += 1) {
     let z = model.fcB[o];

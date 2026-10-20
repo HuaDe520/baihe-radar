@@ -60,6 +60,7 @@ DATA_DIR = Path(__file__).resolve().parent
 BOOKS_FILE = DATA_DIR / "_books.jsonl"          # 中间：成功解析的书
 FAIL_FILE = DATA_DIR / "_failures.jsonl"        # 中间：丢弃/失败的书
 LIST_META_FILE = DATA_DIR / "_list_meta.json"   # 中间：列表页元信息
+RUN_META_FILE = DATA_DIR / "_run_meta.json"     # 中间：累计网络/耗时统计
 PROGRESS_FILE = DATA_DIR / "progress.json"      # 断点续抓进度
 NAMES_FILE = DATA_DIR / "names.jsonl"           # 交付：全量原始
 CLEAN_FILE = DATA_DIR / "names_clean.jsonl"     # 交付：训练集
@@ -84,7 +85,7 @@ EXTRA_VIEWS = [
     dict(isfinish=0, sortType=1, name="积分排序"),
     dict(isfinish=0, sortType=3, name="字数排序"),
 ]
-TARGET_UNIQUE_PER_LABEL = 2400   # 每类「清洗后未跨类去歧」唯一名目标；留出歧义剔除余量
+TARGET_UNIQUE_PER_LABEL = 2500   # 每类「清洗后未跨类去歧」唯一名目标；留出歧义剔除余量
 MAX_BOOKS_PER_LABEL = 3000       # 每类最多请求的详情页数（硬上限）
 
 WORKERS = 4                      # 并发上限（契约：≤4）
@@ -134,14 +135,19 @@ NAME_BLACKLIST = {
     "系统君", "天道", "世界", "命运", "作者君", "小天使", "男嘉宾", "女嘉宾", "幼崽",
     "替身", "马甲", "一个", "其他角色", "各种角色", "众配角", "配角们", "妖怪", "妖兽",
     "仙人", "仙子", "魔王", "恶魔", "天使", "龙套", "群演", "工具人", "纸片人",
-    "老公", "老婆", "男友", "女友", "未婚妻", "未婚夫", "甲乙丙丁",
+    "老公", "老婆", "男友", "女友", "未婚妻", "未婚夫", "甲乙丙丁", "灵根", "灵石",
+    "灵兽", "灵器", "法器", "丹药", "小孩儿", "小孩子", "小朋友", "汉王", "汉王妃",
+    "小狐妖", "真少爷", "一些人", "笑死人", "圈外人", "圈内人", "植物人", "动物人",
+    "坏女人", "大明星", "大道", "大恶龙", "大美女", "大鬼", "百鬼", "魔鬼", "前任",
+    "男朋友", "女性", "女主角", "某某", "玩家", "觉醒者",
 }
 # 4 字以上描述性短语常见的后缀（「韦恩老爷」「安乐公主」这类称呼）
-JUNK_SUFFIXES = ("老爷", "大人", "先生", "小姐", "公主", "王子", "殿下", "陛下", "娘娘",
-                 "太后", "皇帝", "皇后", "总裁", "老板", "医生", "老师", "同学", "少年",
-                 "少女", "等人", "众人", "们")
+JUNK_SUFFIXES = ("老爷", "大人", "先生", "小姐", "少爷", "姑娘", "公子", "夫人",
+                 "公主", "王子", "殿下", "陛下", "娘娘", "太后", "皇帝", "皇后",
+                 "总裁", "老板", "医生", "老师", "同学", "少年", "少女", "等人",
+                 "众人", "们", "王", "妃", "尊", "妖", "魔", "帝", "后", "人", "者")
 # 名字里几乎不会出现的功能字（防止「什么的」「他们」「一个酷哥」之类混入）
-NAME_BANNED_CHARS = set("的了着过吗呢吧啊呀哦嘛们众个替攻受")
+NAME_BANNED_CHARS = set("的了着过吗呢吧啊呀哦嘛们众个替攻受没泥")
 
 # 4 字及以上、且不含间隔号的词，只有「以姓氏开头」或「含音译常用字」才当人名。
 # 用于过滤「一个酷哥 / 替身使者 / 神秘男嘉宾 / 混血幼崽」这类描述性短语，
@@ -471,6 +477,35 @@ def now_iso() -> str:
     return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds")
 
 
+def load_run_meta() -> dict:
+    """累计运行元数据（多轮抓取/续跑的网络量与耗时），用于报告里的「累计」统计。"""
+    empty = {"runs": 0, "requests": 0, "detail_requests": 0, "bytes_read": 0,
+             "retries": 0, "forbidden": 0, "elapsed_sec": 0.0,
+             "first_run_at": None, "last_run_at": None, "history_note": ""}
+    if RUN_META_FILE.exists():
+        try:
+            meta = json.loads(RUN_META_FILE.read_text(encoding="utf-8"))
+            empty.update({k: v for k, v in meta.items() if k in empty})
+        except (json.JSONDecodeError, OSError):
+            pass
+    return empty
+
+
+def update_run_meta(prev: dict, fetcher_stats: dict, elapsed: float) -> dict:
+    meta = dict(prev)
+    meta["runs"] = int(prev.get("runs", 0)) + 1
+    meta["requests"] = int(prev.get("requests", 0)) + int(fetcher_stats.get("requests", 0))
+    meta["detail_requests"] = int(prev.get("detail_requests", 0)) + int(fetcher_stats.get("detail_requests", 0))
+    meta["bytes_read"] = int(prev.get("bytes_read", 0)) + int(fetcher_stats.get("bytes_read", 0))
+    meta["retries"] = int(prev.get("retries", 0)) + int(fetcher_stats.get("retried", 0))
+    meta["forbidden"] = int(prev.get("forbidden", 0)) + int(fetcher_stats.get("forbidden", 0))
+    meta["elapsed_sec"] = round(float(prev.get("elapsed_sec", 0.0)) + elapsed, 1)
+    meta["last_run_at"] = now_iso()
+    meta["first_run_at"] = prev.get("first_run_at") or meta["last_run_at"]
+    RUN_META_FILE.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return meta
+
+
 def process_details(fetcher: Fetcher, queues: dict[str, list[int]], done: set[int],
                     books: dict[int, dict], fail_counts: dict[str, int],
                     label_unique: dict[str, set[str]], args, t0: float) -> None:
@@ -568,8 +603,9 @@ def process_details(fetcher: Fetcher, queues: dict[str, list[int]], done: set[in
 
 
 def build_outputs(list_meta: dict, books: dict[int, dict], fail_counts: dict[str, int],
-                  fetcher_stats: dict, elapsed: float, args) -> dict:
+                  fetcher_stats: dict, elapsed: float, args, run_meta: dict | None = None) -> dict:
     """从每本书记录重建 names.jsonl / names_clean.jsonl / stats.json / DATA_REPORT.md。"""
+    run_meta = run_meta or {}
     rows = [books[nid] for nid in sorted(books)]
     by_label_books: dict[str, list[dict]] = {lab: [] for lab in LABEL_ORDER}
     for row in rows:
@@ -653,6 +689,7 @@ def build_outputs(list_meta: dict, books: dict[int, dict], fail_counts: dict[str
 
     stats = {
         "generated_at": now_iso(),
+        "history_note": run_meta.get("history_note", ""),
         "source": "晋江文学城作品库 https://www.jjwxc.net/bookbase.php (gb18030/gzip)",
         "detail_url_template": DETAIL_URL,
         "labels": {lab: {"xx0": LABEL_XX[lab], "zh": LABEL_ZH[lab],
@@ -673,11 +710,15 @@ def build_outputs(list_meta: dict, books: dict[int, dict], fail_counts: dict[str
         "ambiguous_by_label_pair": ambiguous_by_label_pair,
         "ambiguous_examples": sorted(ambiguous)[:30],
         "network": {
-            "list_and_detail_requests": fetcher_stats.get("requests", 0),
-            "detail_requests_this_run": fetcher_stats.get("detail_requests", 0),
-            "bytes_read": fetcher_stats.get("bytes_read", 0),
-            "retries": fetcher_stats.get("retried", 0),
-            "forbidden_403": fetcher_stats.get("forbidden", 0),
+            "this_run_requests": fetcher_stats.get("requests", 0),
+            "this_run_detail_requests": fetcher_stats.get("detail_requests", 0),
+            "this_run_elapsed_sec": round(elapsed, 1),
+            "cumulative_requests": run_meta.get("requests", 0),
+            "cumulative_bytes_read": run_meta.get("bytes_read", 0),
+            "cumulative_retries": run_meta.get("retries", 0),
+            "forbidden_403": run_meta.get("forbidden", 0),
+            "crawl_runs": run_meta.get("runs", 0),
+            "cumulative_elapsed_sec": run_meta.get("elapsed_sec", 0.0),
             "aborted": fetcher_stats.get("aborted", False),
             "abort_reason": fetcher_stats.get("abort_reason", ""),
         },
@@ -740,10 +781,14 @@ def write_report(stats: dict, clean_by_label: dict[str, list[dict]], raw_rows: l
     L.append("")
     L.append("详情页：`https://www.jjwxc.net/onebook.php?novelid={novelid}`\n")
     L.append("## 三、抓取策略\n")
+    view_desc = "、".join(f"{v['name']}（{v['pages']} 页 / {v['ids']} 本）"
+                          for v in stats["views_per_label"].get("baihe", []))
     L.append("- **未登录每视图最多 10 页**：列表页第 11 页起返回「请登入后再访问此页面」。因此每个频道用"
-             "两个书目几乎不重叠的筛选视图各抓 10 页：`isfinish=1`（已完结）与 `isfinish=2`（连载中）"
-             "→ **每频道 20 个列表页**（约 2000 本候选书）。主视图不够时，脚本会自动追加"
-             "`sortType=1`（积分排序）/ `sortType=3`（字数排序）视图继续补书目。")
+             "书目几乎不重叠的筛选视图拼够页数："
+             f"{view_desc} → **每频道 {stats['pages_per_label'].get('baihe', 0)} 个列表页**"
+             f"（候选 {stats['candidate_books'].get('baihe', 0)} 本）。"
+             f"每类清洗后唯一名达到目标（{stats['params'].get('target_per_label', 0)}）即停止该类，"
+             "因此实际解析书数少于候选数（省时省流量）。主视图不够时，脚本自动追加积分排序/字数排序视图补书目。")
     L.append(f"- **反爬与礼貌**：并发 {args.workers}（≤4），每次请求前随机延时 "
              f"{DELAY_MIN}–{DELAY_MAX}s，失败指数退避重试 {RETRIES} 次，超时 {TIMEOUT}s，"
              "正常 Chrome UA + gzip；累计 403 达阈值自动熔断。")
@@ -776,19 +821,32 @@ def write_report(stats: dict, clean_by_label: dict[str, list[dict]], raw_rows: l
     reasons = stats.get("discard_reasons", {})
     L.append("| 情况 | 处理 | 数量 |")
     L.append("|---|---|---|")
-    L.append(f"| 列表页第 11 页起需登录 | 改用「已完结 / 连载中」两个视图各 10 页；不够再补排序视图 | — |")
+    L.append(f"| 列表页第 11 页起需登录 | 改用「已完结 / 连载中」等多个不重叠筛选视图各 10 页；不够再补排序视图 | — |")
     L.append(f"| 详情页无 Keywords（作品不存在/下架） | 丢弃并记 `_failures.jsonl` | {reasons.get('no_keywords', 0)} |")
     L.append(f"| 文章类型不含本频道关键词（串类） | 丢弃该书记录 | {reasons.get('genre_mismatch', 0)} |")
     L.append(f"| Keywords 无「主角：」字段 | 丢弃该书记录 | {reasons.get('no_protagonist', 0)} |")
     L.append(f"| 命中登录墙页面 | 丢弃并记录 | {reasons.get('login_wall', 0)} |")
     L.append(f"| 网络超时/连接错误（重试 3 次后仍失败） | 不标记完成，下次重跑自动重试 | {reasons.get('network_error', 0)} |")
     L.append("")
-    L.append(f"- 网络统计：累计请求 {stats['network']['list_and_detail_requests']} 次，"
-             f"读取约 {stats['network']['bytes_read'] / 1048576:.1f} MB，重试 {stats['network']['retries']} 次，"
-             f"403 次数 {stats['network']['forbidden_403']}。")
-    if stats["network"]["aborted"]:
-        L.append(f"- ⚠ 本次运行触发熔断：{stats['network']['abort_reason']}（用已抓数据出结果）。")
-    L.append(f"- 本次抓取耗时约 {stats['elapsed_sec_this_run'] / 60:.1f} 分钟。")
+    net = stats["network"]
+    if net.get("this_run_requests"):
+        L.append(f"- 网络统计（本次运行）：请求 {net.get('this_run_requests', 0)} 次，"
+                 f"耗时 {net.get('this_run_elapsed_sec', 0) / 60:.1f} 分钟。")
+    else:
+        L.append("- 网络统计：本次为离线重建（`--rebuild`），未发起网络请求。")
+    if net.get("crawl_runs"):
+        L.append(f"- 网络统计（累计 {net.get('crawl_runs', 0)} 轮，自元数据启用起）："
+                 f"请求 {net.get('cumulative_requests', 0)} 次，"
+                 f"读取约 {net.get('cumulative_bytes_read', 0) / 1048576:.1f} MB，"
+                 f"重试 {net.get('cumulative_retries', 0)} 次，403 次数 {net.get('forbidden_403', 0)}，"
+                 f"累计耗时约 {net.get('cumulative_elapsed_sec', 0) / 60:.1f} 分钟。")
+    if net.get("aborted"):
+        L.append(f"- ⚠ 本次运行触发熔断：{net.get('abort_reason', '')}（用已抓数据出结果）。")
+    L.append("- 注：本数据集经多轮抓取完成（试跑校准 → 首次全量 → 按最终清洗规则重建/补量），"
+             "网络「累计」统计从启用运行元数据（`_run_meta.json`）后开始记录；"
+             "成功解析书数以 `_books.jsonl` 为准。")
+    if stats.get("history_note"):
+        L.append(f"- 抓取历史（补记）：{stats['history_note']}")
     L.append("")
     L.append("## 七、复现方式\n")
     L.append("```bash")
@@ -807,7 +865,7 @@ def write_report(stats: dict, clean_by_label: dict[str, list[dict]], raw_rows: l
 
 
 def reset_intermediates() -> None:
-    for path in (BOOKS_FILE, FAIL_FILE, LIST_META_FILE, PROGRESS_FILE):
+    for path in (BOOKS_FILE, FAIL_FILE, LIST_META_FILE, PROGRESS_FILE, RUN_META_FILE):
         if path.exists():
             path.unlink()
     for path in (NAMES_FILE, CLEAN_FILE, STATS_FILE, REPORT_FILE):
@@ -822,7 +880,7 @@ def parse_args(argv: list[str] | None = None):
     p.add_argument("--views", type=int, default=len(VIEWS), help="主视图数（默认 2：已完结/连载中）")
     p.add_argument("--extra", type=int, default=len(EXTRA_VIEWS), help="主视图不够时最多追加几个兜底视图")
     p.add_argument("--target", type=int, default=TARGET_UNIQUE_PER_LABEL,
-                   help="每类清洗后唯一名目标（默认 2400，留出跨类歧义剔除余量）")
+                   help="每类清洗后唯一名目标（默认 2500，留出跨类歧义剔除余量）")
     p.add_argument("--limit", type=int, default=0, help="本次每类最多新抓书数（0=不限，试跑用）")
     p.add_argument("--workers", type=int, default=WORKERS, help="并发数（契约 ≤4）")
     p.add_argument("--max-seconds", type=int, default=MAX_SECONDS, help="总时长软上限（秒）")
@@ -850,14 +908,16 @@ def main(argv: list[str] | None = None) -> int:
             print("没有可用的中间文件 data/_books.jsonl，请先运行抓取。")
             return 2
         list_meta = json.loads(LIST_META_FILE.read_text(encoding="utf-8")) if LIST_META_FILE.exists() else {}
-        fetcher = Fetcher()
+        run_meta = load_run_meta()
         stats = build_outputs(list_meta, books, fail_counts,
-                              {"requests": 0, "bytes_read": 0, "retried": 0, "forbidden": 0},
-                              time.time() - t0, args)
+                              {"requests": 0, "detail_requests": 0, "bytes_read": 0,
+                               "retried": 0, "forbidden": 0},
+                              time.time() - t0, args, run_meta)
         print_stats(stats)
         return 0
 
     fetcher = Fetcher()
+    run_meta = load_run_meta()
     done, books, fail_counts = load_done()
     if args.no_resume:
         done.clear()
@@ -872,6 +932,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print("[1/3] 抓取列表页 …")
     list_meta = collect_list_phase(fetcher, args.pages, args.views)
+    list_requests = fetcher.requests
     LIST_META_FILE.write_text(json.dumps(list_meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("[2/3] 抓取详情页并解析主角名 …")
@@ -904,8 +965,11 @@ def main(argv: list[str] | None = None) -> int:
     print("[3/3] 生成交付文件 …")
     fetcher_stats = {"requests": fetcher.requests, "bytes_read": fetcher.bytes_read,
                      "retried": fetcher.retried, "forbidden": fetcher.forbidden,
-                     "aborted": fetcher.aborted, "abort_reason": fetcher.abort_reason}
-    stats = build_outputs(list_meta, books, fail_counts, fetcher_stats, time.time() - t0, args)
+                     "aborted": fetcher.aborted, "abort_reason": fetcher.abort_reason,
+                     "detail_requests": max(0, fetcher.requests - list_requests)}
+    elapsed = time.time() - t0
+    run_meta = update_run_meta(run_meta, fetcher_stats, elapsed)
+    stats = build_outputs(list_meta, books, fail_counts, fetcher_stats, elapsed, args, run_meta)
     save_progress(done, books, t0)
     print_stats(stats)
     if fetcher.aborted:
