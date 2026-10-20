@@ -1,21 +1,22 @@
 /**
- * 百合雷达 BAIHE RADAR · 前端推理引擎 v3（ES module）
+ * 百合雷达 BAIHE RADAR · 前端推理引擎 v4（ES module）
  *
- * 严格复刻 `train/train_v3.py`（MultiHead）导出的 baihe-multi-v3 权重：
- *   输入：trim → 去掉所有空白 → Latin 字母转小写 → 按 Unicode 码点取前 max_len(=12) 个字符
+ * 严格复刻 `train/train_v4.py`（MultiHead）导出的 baihe-multi-v4 权重：
+ *   输入：trim → 去掉所有空白 → ASCII 大写字母转小写 → 按 Unicode 码点取前 max_len(=12) 个字符
+ *        （中文名、英文名、网名的字母/数字/下划线等字符都按原样进入 vocab 查表）
  *        → vocab 查表（未登录用 unk_id=1）→ 不足补 pad_id=0 到 12
  *   编码：X[i] = concat(emb[ids[i]] 32 维, pos[i] 8 维) = 每位置 40 维（concat，不是相加）
  *   卷积：三路 conv k=1/2/3（W[c][j*40+e]）→ BatchNorm(gamma,beta,mean,var,bn_eps) → ReLU
  *        → 每路 max + mean 双池化 → 按分支顺序拼 [max, mean] = 512 维
  *   特征：512 + 首字 emb 32 + 末个非 pad 字 emb 32 = 576 → fc(160) + ReLU
- *   四头：gender(2) / expression(4) / genre(3) / yuri(2) 各自 Linear + softmax
+ *   五头：gender(2) / expression(4) / genre(3) / yuri(2) / yuri_char(2) 各自 Linear + softmax
  *
  * 纯娱乐向玩具；本文件只做推理，不含任何 UI。
  *
  * 对外接口：
  *   loadModel(url)                                  → Promise<Model>
  *   buildModel(json)                                → Model
- *   predict(model, rawInput)                        → {probs:{gender,expression,genre,yuri},
+ *   predict(model, rawInput)                        → {probs:{gender,expression,genre,yuri,yuri_char},
  *                                                       baiheIndex, chars, ids, truncated,
  *                                                       inputLength, unknownChars}
  *   occlusionAttribution(model, raw, head, classIndex)
@@ -24,11 +25,11 @@
  *   normalizeInput(raw)                             → string
  */
 
-/** v3 权重格式标识（强制校验，避免误把旧权重当 v3 加载） */
-export const MODEL_FORMAT = 'baihe-multi-v3';
+/** v4 权重格式标识（强制校验，避免误把旧权重当 v4 加载） */
+export const MODEL_FORMAT = 'baihe-multi-v4';
 
-/** 四个头的固定顺序（用于展示与校验） */
-export const HEAD_KEYS = ['gender', 'expression', 'genre', 'yuri'];
+/** 五个头的固定顺序（用于展示与校验） */
+export const HEAD_KEYS = ['gender', 'expression', 'genre', 'yuri', 'yuri_char'];
 
 function fail(message) {
   throw new Error(message);
@@ -116,7 +117,7 @@ export function buildModel(json) {
   if (json.format !== MODEL_FORMAT) {
     fail(
       `模型格式不匹配：期望 ${MODEL_FORMAT}，实际 ${json.format || '缺失'}。` +
-        '旧版权重（baihe-dualhead-v2 / baihe-charcnn-v1）已不再支持，请等待 Lead 导出 v3 多头权重。',
+        '旧版权重（baihe-multi-v3 / baihe-dualhead-v2 / baihe-charcnn-v1）已不再支持，请等待 Lead 导出 v4 五头权重。',
     );
   }
   const config = json.config;
@@ -293,16 +294,17 @@ export async function loadModel(url = './model.json') {
 }
 
 /**
- * 清洗输入（v3 规范）：
+ * 清洗输入（v4 规范）：
  *   1) 取字符串并 trim
  *   2) 去掉所有空白字符（\s）
- *   3) Latin 字母统一转小写
+ *   3) ASCII 大写字母（A-Z）统一转小写（与 train/ref_predict_v4.py 一致）
  *   4) 清洗后为空 → 抛「请输入名字」
+ * 网名里的数字、下划线、点、连字符等原样保留，交给 vocab 查表。
  * 返回清洗后的字符串（不截断；截断在 predict 里按码点做）。
  */
 export function normalizeInput(rawInput) {
   const text = rawInput == null ? '' : String(rawInput);
-  const cleaned = text.trim().replace(/\s+/g, '').toLowerCase();
+  const cleaned = text.trim().replace(/\s+/g, '').replace(/[A-Z]/g, (ch) => ch.toLowerCase());
   if (!cleaned) fail('请输入名字');
   return cleaned;
 }

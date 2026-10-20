@@ -1,27 +1,35 @@
 /**
- * 百合雷达 BAIHE RADAR · 页面逻辑（v3 多头模型）
+ * 百合雷达 BAIHE RADAR · 页面逻辑（v4 五头模型）
  *
  * 职责：加载 ./model.json → 绑定输入/示例 chips → 调 inference.js 推理
- *      → 渲染「百合指数」仪表（yuri 头）、性别倾向 / ACG 属性 / 作品倾向三组概率条、
- *        可切换目标的逐字遮挡贡献、提示与四头模型卡。
+ *      → 渲染「百合指数」仪表（yuri 头）、性别倾向 / 作品倾向 / ACG 属性 / ACG 百合角色四组概率条、
+ *        可切换目标的逐字遮挡贡献、提示与五头模型卡。
  * 纯逻辑部分（verdictFor / modelCardData / buildViewModel …）导出成纯函数，方便 Node 自测。
  */
 
 import { loadModel, predict, occlusionAttribution } from './inference.js';
 
-export const EXAMPLE_NAMES = ['林晚', '苏清', '沈月', '顾言', '张伟', '王芳', '李娜', '陈星', 'Alice', 'Bob'];
+export const EXAMPLE_NAMES = [
+  '林晚', '苏清', '沈月', '顾言', '张伟', '王芳', '李娜', '陈星', 'Alice', 'Bob', '林晚_233', 'Alice_777',
+];
 export const DEFAULT_BASELINE = 1 / 3;
 /** 二分类头判定阈值：P(百合) ≥ 0.5 视为「判定为百合」。 */
 export const BINARY_DECISION_THRESHOLD = 0.5;
 export const MODEL_URL = new URL('./model.json', import.meta.url).href;
 
-/** 四个头的展示顺序与标题（与 config.heads.* 对应） */
-export const HEAD_KEYS = ['gender', 'expression', 'genre', 'yuri'];
-export const HEAD_TITLES = { gender: '性别倾向', expression: 'ACG 属性', genre: '作品倾向', yuri: '百合判定' };
-/** 页面概率条展示的三个头（yuri 用大圆环，不重复画条） */
-export const BAR_HEAD_KEYS = ['gender', 'expression', 'genre'];
+/** 五个头的展示顺序与标题（与 config.heads.* 对应） */
+export const HEAD_KEYS = ['gender', 'expression', 'genre', 'yuri', 'yuri_char'];
+export const HEAD_TITLES = {
+  gender: '性别倾向',
+  expression: 'ACG 属性',
+  genre: '角色取向（虚构作品频道）',
+  yuri: '百合判定',
+  yuri_char: '百合角色（ACG）',
+};
+/** 页面概率条展示的四个头（yuri 用大圆环，不重复画条） */
+export const BAR_HEAD_KEYS = ['gender', 'genre', 'expression', 'yuri_char'];
 /** 逐字贡献可切换的目标头 */
-export const CONTRIB_HEAD_KEYS = ['yuri', 'gender', 'expression'];
+export const CONTRIB_HEAD_KEYS = ['yuri', 'gender', 'expression', 'yuri_char'];
 
 /* ============================================================
    纯函数区（无 DOM 依赖，Node 里可直接测）
@@ -118,6 +126,7 @@ export function contributionLabel(headKey, className) {
   if (headKey === 'gender') return `性别「${className}」`;
   if (headKey === 'expression') return `ACG 属性「${className}」`;
   if (headKey === 'genre') return `作品倾向「${className}」`;
+  if (headKey === 'yuri_char') return `百合角色「${className}」`;
   return `${headKey}「${className}」`;
 }
 
@@ -149,6 +158,7 @@ export function modelCardData(model) {
     genderForeign: dataset && Number.isFinite(dataset.gender_foreign) ? dataset.gender_foreign : 0,
     expression: dataset && Number.isFinite(dataset.expression) ? dataset.expression : 0,
     genre: dataset && Number.isFinite(dataset.genre) ? dataset.genre : 0,
+    yuriChar: dataset && Number.isFinite(dataset.yuri_char) ? dataset.yuri_char : 0,
   };
   const hasDataset = Object.values(datasetCounts).some((value) => value > 0);
 
@@ -173,6 +183,11 @@ export function modelCardData(model) {
       balancedAcc: pick('yuri', 'balanced_acc'),
       n: headN('yuri'),
     },
+    yuriChar: {
+      acc: pick('yuri_char', 'acc'),
+      balancedAcc: pick('yuri_char', 'balanced_acc'),
+      n: headN('yuri_char'),
+    },
     dataset: datasetCounts,
     hasDataset,
     format: model && typeof model.format === 'string' ? model.format : '',
@@ -180,7 +195,7 @@ export function modelCardData(model) {
 }
 
 /**
- * 一次扫描的完整视图数据：四头概率、点评、仪表档位、各组概率条、逐字贡献、提示。
+ * 一次扫描的完整视图数据：五头概率、点评、仪表档位、各组概率条、逐字贡献、提示。
  * @param {object} model       buildModel / loadModel 结果
  * @param {string} rawInput    原始输入
  * @param {string} [contribHead='yuri']        逐字贡献的目标头
@@ -237,6 +252,7 @@ export function buildViewModel(model, rawInput, contribHead = 'yuri', contribCla
       gender: headItems(model, probs, 'gender'),
       expression: headItems(model, probs, 'expression'),
       genre: genreHead,
+      yuri_char: headItems(model, probs, 'yuri_char'),
     },
     genreLeader: genreHead.top,
     contribution: { ...target, items: attribution },
@@ -277,6 +293,7 @@ function initApp() {
       gender: $('#gender-bars'),
       expression: $('#expression-bars'),
       genre: $('#genre-bars'),
+      yuri_char: $('#yuri-char-bars'),
     },
     contribCard: $('#contrib-card'),
     contribList: $('#contrib-list'),
@@ -294,6 +311,9 @@ function initApp() {
       'metric-genre-n',
       'metric-yuri-bal',
       'metric-yuri-n',
+      'metric-yuri-char-acc',
+      'metric-yuri-char-bal',
+      'metric-yuri-char-n',
     ],
     metricEls: {},
     datasetLine: $('#dataset-line'),
@@ -415,7 +435,7 @@ function initApp() {
       renderModelCard();
       setLoading(false);
       setScanEnabled(true, '开始扫描');
-      if (els.input) els.input.placeholder = '输入一个名字，如：林晚 / Alice';
+      if (els.input) els.input.placeholder = '输入中文名 / 英文名 / 网名，如：林晚、Alice_777';
     } catch (err) {
       model = null;
       setLoading(false);
@@ -487,14 +507,24 @@ function initApp() {
     set('metric-genre-n', count(data.genre.n));
     set('metric-yuri-bal', acc(data.yuri.balancedAcc));
     set('metric-yuri-n', count(data.yuri.n));
+    set('metric-yuri-char-acc', acc(data.yuriChar.acc));
+    set('metric-yuri-char-bal', acc(data.yuriChar.balancedAcc));
+    set('metric-yuri-char-n', count(data.yuriChar.n));
 
     if (els.formatTag && data.format) els.formatTag.textContent = data.format;
     if (els.datasetLine) {
-      els.datasetLine.textContent = data.hasDataset
-        ? `训练数据：中文姓名 ${formatInteger(data.dataset.genderZh)} · 外国姓名 ${formatInteger(
-            data.dataset.genderForeign,
-          )} · ACG 角色 ${formatInteger(data.dataset.expression)} · 小说主角名 ${formatInteger(data.dataset.genre)}`
-        : '训练数据：待接入';
+      if (!data.hasDataset) {
+        els.datasetLine.textContent = '训练数据：待接入';
+      } else {
+        const parts = [
+          `中文姓名 ${formatInteger(data.dataset.genderZh)}`,
+          `外国姓名 ${formatInteger(data.dataset.genderForeign)}`,
+          `ACG 属性 ${formatInteger(data.dataset.expression)}`,
+          `小说主角名 ${formatInteger(data.dataset.genre)}`,
+        ];
+        if (data.dataset.yuriChar > 0) parts.push(`百合角色 ${formatInteger(data.dataset.yuriChar)}`);
+        els.datasetLine.textContent = `训练数据：${parts.join(' · ')}`;
+      }
     }
   }
 
@@ -504,7 +534,7 @@ function initApp() {
 
     const raw = els.input.value;
     if (!raw || !raw.replace(/\s+/g, '')) {
-      setHint('请先输入一个名字，比如「林晚」或「Alice」');
+      setHint('请先输入一个名字或网名，比如「林晚」或「Alice_777」');
       shakeInput();
       els.input.focus();
       return;

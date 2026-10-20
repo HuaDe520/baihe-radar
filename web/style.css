@@ -745,6 +745,26 @@ body {
   background: linear-gradient(90deg, var(--amber), #ff9f7a);
 }
 
+/* 第五头：ACG 百合角色 */
+.bar__dot--yuri_char-other_char {
+  background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+  box-shadow: 0 0 10px rgba(148, 163, 184, 0.45);
+}
+
+.bar__dot--yuri_char-yuri_char {
+  background: linear-gradient(135deg, #ffb3e6, #ff5fb8);
+  box-shadow: 0 0 10px rgba(255, 138, 216, 0.7);
+}
+
+.bar__fill--yuri_char-other_char {
+  background: linear-gradient(90deg, #cbd5e1, #94a3b8);
+}
+
+.bar__fill--yuri_char-yuri_char {
+  background: linear-gradient(90deg, #ffb3e6, #ff5fb8);
+  box-shadow: 0 0 18px rgba(255, 111, 196, 0.65);
+}
+
 .bar__head {
   display: flex;
   align-items: baseline;
@@ -854,7 +874,7 @@ body {
 .seg {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   padding: 4px;
   border: 1px solid var(--stroke-soft);
   border-radius: 999px;
@@ -862,13 +882,13 @@ body {
 }
 
 .seg-btn {
-  padding: 7px 14px;
+  padding: 6px 11px;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--ink-soft);
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   cursor: pointer;
   transition: background 0.18s, color 0.18s, box-shadow 0.18s;
   -webkit-tap-highlight-color: transparent;
@@ -1250,12 +1270,8 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .head-card--wide {
-    grid-column: 1 / -1;
-  }
-
   .metrics {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

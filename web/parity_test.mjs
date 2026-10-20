@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 /**
- * v3 多头模型对拍脚本：JS 推理（web/inference.js） vs Python 参考实现。
+ * v4 五头模型对拍脚本：JS 推理（web/inference.js） vs Python 参考实现。
  *
  * 用法（在任意目录执行均可）：
  *   node web/parity_test.mjs
- *       读 web/model.json + train/test_vectors3.json，
- *       逐条比对 4 个头（gender / expression / genre / yuri）概率的 max|Δ|。
+ *       读 web/model.json + train/test_vectors4.json，
+ *       逐条比对 5 个头（gender / expression / genre / yuri / yuri_char）概率的 max|Δ|。
  *   node web/parity_test.mjs --mock
- *       用 web/mock-model-v3.json 代替 web/model.json（本地无真模型时自测链路）。
- *   BAIHE_VECTORS=/path/to/vectors3.json node web/parity_test.mjs
+ *       用 web/mock-model-v4.json 代替 web/model.json（本地无真模型时自测链路）。
+ *   BAIHE_VECTORS=/path/to/vectors4.json node web/parity_test.mjs
  *       指定另一份 test vectors（临时对拍用）。
  *
- * 通过标准：4 个头全部 max|Δ| < 5e-4，退出码 0；否则 1。
+ * 通过标准：5 个头全部 max|Δ| < 5e-4，退出码 0；否则 1。
  * 缺文件时打印提示并退出码 0：
- *   - web/model.json 不存在 → 提示等 Lead 导出 v3；
- *   - web/model.json 还是旧格式（非 baihe-multi-v3）→ 提示等 Lead 覆盖；
- *   - train/test_vectors3.json 不存在 → 打印「待 Lead 生成」。
+ *   - web/model.json 不存在 → 提示等 Lead 导出 v4；
+ *   - web/model.json 还是旧格式（非 baihe-multi-v4）→ 提示等 Lead 覆盖；
+ *   - train/test_vectors4.json 不存在 → 打印「待 Lead 生成」。
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -26,13 +26,13 @@ import { buildModel, predict, MODEL_FORMAT, HEAD_KEYS } from './inference.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const TOLERANCE = 5e-4;
-const VECTORS_FORMAT = 'baihe-multi-v3';
+const VECTORS_FORMAT = 'baihe-multi-v4';
 
 const useMock = process.argv.includes('--mock');
-const modelPath = useMock ? path.join(HERE, 'mock-model-v3.json') : path.join(HERE, 'model.json');
+const modelPath = useMock ? path.join(HERE, 'mock-model-v4.json') : path.join(HERE, 'model.json');
 const vectorsPath = process.env.BAIHE_VECTORS
   ? path.resolve(process.env.BAIHE_VECTORS)
-  : path.join(ROOT, 'train', 'test_vectors3.json');
+  : path.join(ROOT, 'train', 'test_vectors4.json');
 
 function readJson(filePath, label) {
   try {
@@ -52,13 +52,13 @@ function maxDiff(actual, expected) {
   return diff;
 }
 
-console.log('百合雷达 v3 · JS ↔ Python 推理对拍（性别 / ACG 属性 / 作品倾向 / 百合判定 四头）');
+console.log('百合雷达 v4 · JS ↔ Python 推理对拍（性别 / ACG 属性 / 作品倾向 / 百合判定 / ACG 百合角色 五头）');
 console.log(`  模型：${modelPath}`);
 console.log(`  向量：${vectorsPath}`);
 
 if (!existsSync(modelPath)) {
   console.log(`⏳ 未找到模型文件：${modelPath}`);
-  console.log('   web/model.json 待 Lead 训练 v3 导出；本地可先 `node web/make_mock_model_v3.mjs` 生成 mock 权重，');
+  console.log('   web/model.json 待 Lead 训练 v4 导出；本地可先 `node web/make_mock_model_v4.mjs` 生成 mock 权重，');
   console.log('   再用 `node web/parity_test.mjs --mock` 自测链路。跳过对拍，退出码 0。');
   process.exit(0);
 }
@@ -71,17 +71,17 @@ if (modelJson.format !== MODEL_FORMAT) {
 }
 
 if (!existsSync(vectorsPath)) {
-  console.log('⏳ train/test_vectors3.json 待 Lead 生成，跳过对拍（退出码 0）。');
+  console.log('⏳ train/test_vectors4.json 待 Lead 生成，跳过对拍（退出码 0）。');
   console.log('   生成后重跑本脚本即可：node web/parity_test.mjs');
   process.exit(0);
 }
 
-const vectors = readJson(vectorsPath, 'test_vectors3.json');
+const vectors = readJson(vectorsPath, 'test_vectors4.json');
 if (vectors.format && vectors.format !== VECTORS_FORMAT) {
-  console.log(`⚠️  vectors 的 format 是「${vectors.format}」，不是 ${VECTORS_FORMAT}，继续按 v3 字段比对。`);
+  console.log(`⚠️  vectors 的 format 是「${vectors.format}」，不是 ${VECTORS_FORMAT}，继续按 v4 字段比对。`);
 }
 if (!vectors || !Array.isArray(vectors.cases) || vectors.cases.length === 0) {
-  console.log('⏳ test_vectors3.json 里没有 cases，跳过对拍（退出码 0）。');
+  console.log('⏳ test_vectors4.json 里没有 cases，跳过对拍（退出码 0）。');
   process.exit(0);
 }
 
@@ -172,7 +172,7 @@ if (details.length) {
 
 if (failures === 0) {
   console.log(
-    `✔ PASS：${vectors.cases.length} 条全部满足 4 头 max|Δ| < ${TOLERANCE}（格式 ${model.format}，` +
+    `✔ PASS：${vectors.cases.length} 条全部满足 5 头 max|Δ| < ${TOLERANCE}（格式 ${model.format}，` +
       `max_len=${model.maxLen}）`,
   );
   process.exit(0);
