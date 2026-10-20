@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta
       name="description"
-      content="百合雷达 BAIHE RADAR：输入任意名字，测测它的百合浓度。纯娱乐向的字符级神经网络小玩具，训练数据仅为虚构小说角色名。"
+      content="百合雷达 BAIHE RADAR：输入任意名字，测测它的百合指数。纯娱乐向的双头字符级神经网络小玩具，训练数据仅为虚构小说角色名。"
     />
     <meta name="theme-color" content="#170b2b" />
     <title>百合雷达 BAIHE RADAR</title>
@@ -24,7 +24,7 @@
 
     <main class="wrap">
       <header class="hero">
-        <p class="hero__badge">📡 字符级神经网络 · 纯娱乐向</p>
+        <p class="hero__badge">📡 双头字符级 CNN · 纯娱乐向</p>
         <h1 class="hero__title">
           <svg class="hero__logo" viewBox="0 0 48 48" aria-hidden="true">
             <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-opacity=".28" stroke-width="2" />
@@ -37,7 +37,7 @@
           <span class="hero__name">百合雷达</span>
           <span class="hero__en">BAIHE RADAR</span>
         </h1>
-        <p class="hero__subtitle">输入任意名字，测测它的百合浓度（纯娱乐向）</p>
+        <p class="hero__subtitle">输入任意名字，测测它的百合指数（纯娱乐向）</p>
       </header>
 
       <section class="card scan-card" aria-labelledby="scan-title">
@@ -78,7 +78,7 @@
           </div>
         </div>
         <p class="scan-card__foot">
-          扫描会把名字拆成单个字符喂给字符级 CNN（最多取前 8 个字符），再看它更接近哪个频道。结果纯属随机巧合。
+          扫描会把名字拆成单个字符喂给双头字符级 CNN（最多取前 8 个字符）：一个头判断「像不像百合」，另一个头区分三个频道。结果纯属随机巧合。
         </p>
       </section>
 
@@ -91,9 +91,10 @@
         <h2 class="error-card__title" id="error-title">模型加载失败</h2>
         <p class="error-card__text" id="error-text"></p>
         <p class="error-card__hint" id="error-hint">
-          本地预览：先运行 <code>node web/make_mock_model.mjs</code> 生成调试权重，把
-          <code>web/mock-model.json</code> 复制成 <code>web/model.json</code>，再通过 HTTP 服务打开本页（不能直接双击
-          HTML）。正式站点由训练脚本导出 <code>web/model.json</code>。
+          本地预览：先运行 <code>node web/make_mock_model_v2.mjs</code> 生成调试权重，把
+          <code>web/mock-model-v2.json</code> 复制成 <code>web/model.json</code>，再通过 HTTP 服务打开本页（不能直接双击
+          HTML）。正式站点由训练脚本导出 v2 双头 <code>web/model.json</code>；如果模型还是旧版
+          <code>baihe-charcnn-v1</code>，会提示格式不匹配，等 Lead 覆盖即可。
         </p>
         <button class="ghost-btn" id="retry-load" type="button">重新加载模型</button>
       </section>
@@ -102,7 +103,7 @@
         <h2 class="sr-only" id="result-title">扫描结果</h2>
 
         <div class="result-top">
-          <div class="gauge" id="gauge" data-tier="idle" role="img" aria-label="百合浓度待扫描">
+          <div class="gauge" id="gauge" data-tier="idle" role="img" aria-label="百合指数待扫描">
             <svg class="gauge__svg" viewBox="0 0 220 220" aria-hidden="true">
               <defs>
                 <linearGradient id="gauge-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -115,7 +116,7 @@
               <circle class="gauge__meter" id="gauge-meter" cx="110" cy="110" r="92" stroke="url(#gauge-gradient)" />
             </svg>
             <div class="gauge__center">
-              <span class="gauge__caption">百合浓度</span>
+              <span class="gauge__caption">百合指数</span>
               <span class="gauge__value"><span id="gauge-number">--</span><span class="gauge__unit">%</span></span>
               <span class="gauge__tier" id="gauge-tier">雷达待机</span>
             </div>
@@ -128,27 +129,33 @@
           </div>
         </div>
 
-        <div class="bars" aria-label="三类概率">
-          <div class="bar" data-key="baihe">
-            <div class="bar__head">
-              <span class="bar__name"><span class="bar__dot bar__dot--baihe" aria-hidden="true"></span>百合</span>
-              <span class="bar__pct" id="pct-baihe">--%</span>
-            </div>
-            <div class="bar__track"><span class="bar__fill" id="fill-baihe"></span></div>
+        <div class="bars-block">
+          <div class="bars-head">
+            <h3 class="bars__title">三类概率（辅助参考）</h3>
+            <p class="bars__note">来自另一个头：三分类只比瞎猜好一点，真正的「百合指数」看上面的大圆环。</p>
           </div>
-          <div class="bar" data-key="purelove">
-            <div class="bar__head">
-              <span class="bar__name"><span class="bar__dot bar__dot--purelove" aria-hidden="true"></span>纯爱(BL)</span>
-              <span class="bar__pct" id="pct-purelove">--%</span>
+          <div class="bars" aria-label="三类概率（辅助参考）">
+            <div class="bar" data-key="baihe">
+              <div class="bar__head">
+                <span class="bar__name"><span class="bar__dot bar__dot--baihe" aria-hidden="true"></span>百合</span>
+                <span class="bar__pct" id="pct-baihe">--%</span>
+              </div>
+              <div class="bar__track"><span class="bar__fill" id="fill-baihe"></span></div>
             </div>
-            <div class="bar__track"><span class="bar__fill" id="fill-purelove"></span></div>
-          </div>
-          <div class="bar" data-key="romance">
-            <div class="bar__head">
-              <span class="bar__name"><span class="bar__dot bar__dot--romance" aria-hidden="true"></span>言情(BG)</span>
-              <span class="bar__pct" id="pct-romance">--%</span>
+            <div class="bar" data-key="purelove">
+              <div class="bar__head">
+                <span class="bar__name"><span class="bar__dot bar__dot--purelove" aria-hidden="true"></span>纯爱(BL)</span>
+                <span class="bar__pct" id="pct-purelove">--%</span>
+              </div>
+              <div class="bar__track"><span class="bar__fill" id="fill-purelove"></span></div>
             </div>
-            <div class="bar__track"><span class="bar__fill" id="fill-romance"></span></div>
+            <div class="bar" data-key="romance">
+              <div class="bar__head">
+                <span class="bar__name"><span class="bar__dot bar__dot--romance" aria-hidden="true"></span>言情(BG)</span>
+                <span class="bar__pct" id="pct-romance">--%</span>
+              </div>
+              <div class="bar__track"><span class="bar__fill" id="fill-romance"></span></div>
+            </div>
           </div>
         </div>
 
@@ -156,7 +163,7 @@
           <div class="contrib__head">
             <h3 class="contrib__title">逐字贡献</h3>
             <p class="contrib__note">
-              把该字换成「未知字」后重算，百合浓度的变化。<strong>正值</strong> = 这个字在给百合浓度加码，负值 = 在拖后腿。
+              把该字换成「未知字」后重算，百合指数的变化。<strong>正值</strong> = 这个字在给百合指数加码，负值 = 在拖后腿。
             </p>
           </div>
           <div class="contrib__list" id="contrib-list" aria-label="逐字贡献"></div>
@@ -166,7 +173,7 @@
       <section class="card model-card" aria-labelledby="model-title">
         <div class="model-card__head">
           <h2 class="model-card__title" id="model-title">模型卡</h2>
-          <span class="tag" id="format-tag">baihe-charcnn-v1</span>
+          <span class="tag" id="format-tag">baihe-dualhead-v2</span>
         </div>
         <dl class="stats">
           <div class="stat">
@@ -174,8 +181,12 @@
             <dd id="stat-n-train">待训练</dd>
           </div>
           <div class="stat">
-            <dt>测试集准确率</dt>
+            <dt>三分类测试准确率</dt>
             <dd id="stat-test-acc">待训练</dd>
+          </div>
+          <div class="stat">
+            <dt>百合判定平衡准确率</dt>
+            <dd id="stat-bin-balanced-acc">待训练</dd>
           </div>
           <div class="stat">
             <dt>随机基线</dt>
@@ -185,7 +196,10 @@
         <p class="model-card__line" id="dataset-line">训练数据：待接入</p>
         <p class="model-card__line">数据来源：晋江文学城作品库主角名</p>
         <p class="model-card__line model-card__line--muted">
-          结构：字符级 CNN（Conv k=1/2/3 → ReLU → max/mean 双池化 → 拼接 224 维 → FC 64 → 3 分类 softmax）。全部推理在你的浏览器本地完成。
+          结构：共享编码器（字向量 32 + 位置向量 8 → Conv k=1/2/3 + BatchNorm → ReLU → max/mean 双池化 → 拼首末字向量 576 维 → FC 128）+ 双头（三分类 / 百合 vs 非百合）。全部推理在你的浏览器本地完成。
+        </p>
+        <p class="model-card__line model-card__line--muted">
+          三分类只比瞎猜好一点；二分类头（百合指数）是主力，但它仍然只是个玩具，别当真。
         </p>
         <p class="disclaimer">
           <span class="disclaimer__icon" aria-hidden="true">⚠️</span>

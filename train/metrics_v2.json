@@ -1,0 +1,59 @@
+{
+  "test_acc_3cls": 0.4575,
+  "baseline_3cls": 0.3354,
+  "macro_f1_3cls": 0.4395,
+  "binary_acc": 0.6617,
+  "binary_balanced_acc": 0.589,
+  "binary_macro_f1": 0.5915,
+  "per_class": {
+    "baihe": {
+      "precision": 0.4579,
+      "recall": 0.557,
+      "f1": 0.5026
+    },
+    "purelove": {
+      "precision": 0.4655,
+      "recall": 0.5888,
+      "f1": 0.52
+    },
+    "romance": {
+      "precision": 0.4365,
+      "recall": 0.2237,
+      "f1": 0.2958
+    }
+  },
+  "confusion": [
+    [
+      337,
+      180,
+      88
+    ],
+    [
+      165,
+      358,
+      85
+    ],
+    [
+      234,
+      231,
+      134
+    ]
+  ],
+  "binary_confusion": [
+    [
+      975,
+      232
+    ],
+    [
+      381,
+      224
+    ]
+  ],
+  "n_train": 14489,
+  "n_val": 1812,
+  "n_test": 1812,
+  "params": 184037,
+  "best_epoch": 18,
+  "val_acc3": 0.4553,
+  "val_bal2": 0.5931
+}

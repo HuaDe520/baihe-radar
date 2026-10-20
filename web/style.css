@@ -601,10 +601,30 @@ body {
 }
 
 /* ---------- 概率条 ---------- */
+.bars-block {
+  margin-top: 24px;
+}
+
+.bars-head {
+  margin-bottom: 12px;
+}
+
+.bars__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.bars__note {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
 .bars {
   display: grid;
   gap: 14px;
-  margin-top: 24px;
 }
 
 .bar__head {
@@ -806,7 +826,7 @@ body {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin: 16px 0;
   padding: 0;
@@ -822,9 +842,10 @@ body {
 
 .stat dt {
   color: var(--ink-muted);
-  font-size: 0.7rem;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  white-space: normal;
 }
 
 .stat dd {
@@ -981,6 +1002,10 @@ body {
 
   .scan-btn {
     white-space: nowrap;
+  }
+
+  .stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

@@ -1,4 +1,5 @@
 CONTRACT.md
+_work/
 _tmp/
 __pycache__/
 *.pyc
@@ -11,6 +12,9 @@ data/progress.json
 data/_probe*.py
 data/book-sample.*
 data/jj-tag.html
-train/run_*.log
+data/names_v1.jsonl
+data/names_clean_v1.jsonl
+data/stats_v1.json
+train/*.log
 _api-probe.log
 hosts*.bak

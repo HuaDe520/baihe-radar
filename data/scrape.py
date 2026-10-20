@@ -5,19 +5,20 @@
 
 来源
 ----
-列表页：https://www.jjwxc.net/bookbase.php?fw0=0&fbsj=0&ycx0=0&xx0={xx0}&mainview0=0&sd0=0
-        &lx0=0&sortType={sortType}&isfinish={isfinish}&collectiontypes=ors
-        &searchkeywords=&page={page}
+列表页：https://www.jjwxc.net/bookbase.php?fw0={fw0}&fbsj={fbsj}&ycx0={ycx0}&xx0={xx0}
+        &mainview0={mainview0}&sd0={sd0}&lx0={lx0}&sortType={sortType}&isfinish={isfinish}
+        &collectiontypes=ors&searchkeywords=&page={page}
     xx0=1 → 言情(romance)；xx0=2 → 纯爱/BL(purelove)；xx0=3 → 百合(baihe)
     未登录时每个筛选视图最多 10 页（第 11 页返回「请登入后再访问此页面」），
-    因此用互不重叠的筛选视图（已完结 / 连载中，必要时再补积分排序）拼够书目。
+    因此叠加多个低重叠的筛选/排序视图（主视图：已完结/连载中；扩量视图：积分/字数排序、
+    免费库、阅文衍生、衍生作品、发表时间、时代、视角等）拼够书目。
 详情页：https://www.jjwxc.net/onebook.php?novelid={id}
     从 <meta name="Keywords"> 的「主角：」字段提取主角名；
     用 <span itemprop="genre"> 校验文章类型（百合 / 纯爱 / 言情）防止串类。
 
 用法
 ----
-  python data/scrape.py                     # 完整抓取（每视图 10 页，目标每类去重 ≥2400 原始名）
+  python data/scrape.py                     # 完整抓取（主视图 + 扩量视图，每类唯一名目标 6400）
   python data/scrape.py --pages 2 --limit 400   # 快速试跑
   python data/scrape.py --rebuild            # 不联网，仅用 data/_books.jsonl 重建交付文件
   python data/scrape.py --reset              # 清空中间文件后重抓
@@ -32,7 +33,8 @@
   progress.json      断点续抓进度（已处理 novelid）
   _books.jsonl       中间文件：每本书一行（novelid/label/genre/names），断点续抓依据
   _failures.jsonl    中间文件：解析失败/被丢弃的书（novelid/label/status）
-  _list_meta.json    中间文件：列表页抓取元信息（页数、候选书目）
+  _list_meta.json    中间文件：列表页抓取元信息（页数、候选书目、各视图 novelid）
+  names_v1.jsonl / names_clean_v1.jsonl / stats_v1.json  扩量前的 v1 备份（只读对比用）
 
 只用标准库（urllib / gzip / zlib / re / json / concurrent.futures ...），Python 3.10+。
 """
@@ -80,13 +82,36 @@ VIEWS = [
     dict(isfinish=1, sortType=0, name="已完结"),
     dict(isfinish=2, sortType=0, name="连载中"),
 ]
-# 兜底视图：主视图拼不够目标时再补（同一频道不同排序，顶上书目不同）。
-EXTRA_VIEWS = [
-    dict(isfinish=0, sortType=1, name="积分排序"),
-    dict(isfinish=0, sortType=3, name="字数排序"),
+# 扩量视图：主视图之外叠加不同排序 / 范围 / 原创性 / 发表时间 / 时代 / 视角筛选，
+# 每个视图独立享受未登录 10 页上限，可拿到与主视图不重叠的书目。
+# 顺序按「新增书目密度」从高到低：排序类 → 范围/衍生 → 时间 → 排序×完结状态 → 时代/视角。
+EXPANSION_VIEWS = [
+    dict(sortType=1, name="积分排序"),
+    dict(sortType=3, name="字数排序"),
+    dict(fw0=4, name="免费库"),
+    dict(fw0=5, name="阅文衍生"),
+    dict(ycx0=2, name="衍生作品"),
+    dict(fbsj=2, name="发表时间近三月"),
+    dict(fbsj=3, name="发表时间近一年"),
+    dict(sortType=5, name="评论排序"),
+    dict(sortType=1, isfinish=1, name="积分+已完结"),
+    dict(sortType=1, isfinish=2, name="积分+连载中"),
+    dict(sortType=3, isfinish=1, name="字数+已完结"),
+    dict(sortType=3, isfinish=2, name="字数+连载中"),
+    dict(sd0=2, name="古色古香"),
+    dict(sd0=1, name="近代现代"),
+    dict(fw0=4, sortType=1, name="免费库+积分"),
+    dict(fw0=4, sortType=3, name="免费库+字数"),
+    dict(fw0=5, sortType=1, name="阅文衍生+积分"),
+    dict(ycx0=2, sortType=1, name="衍生+积分"),
+    dict(fbsj=2, sortType=1, name="近三月+积分"),
+    dict(fbsj=2, sortType=3, name="近三月+字数"),
+    dict(sd0=2, sortType=1, name="古色古香+积分"),
+    dict(sd0=2, sortType=3, name="古色古香+字数"),
+    dict(mainview0=3, name="主攻视角"),
+    dict(mainview0=4, name="主受视角"),
 ]
-TARGET_UNIQUE_PER_LABEL = 2500   # 每类「清洗后未跨类去歧」唯一名目标；留出歧义剔除余量
-MAX_BOOKS_PER_LABEL = 3000       # 每类最多请求的详情页数（硬上限）
+TARGET_UNIQUE_PER_LABEL = 6400   # 每类「清洗后未跨类去歧」唯一名目标；留出歧义剔除余量
 
 WORKERS = 4                      # 并发上限（契约：≤4）
 DELAY_MIN, DELAY_MAX = 0.15, 0.40
@@ -94,9 +119,13 @@ RETRIES = 3
 TIMEOUT = 25
 MAX_SECONDS = 2400               # 总时长软上限（40 分钟），到点收工出结果
 
-LIST_URL = ("https://www.jjwxc.net/bookbase.php?fw0=0&fbsj=0&ycx0=0&xx0={xx0}"
-            "&mainview0=0&sd0=0&lx0=0&sortType={sortType}&isfinish={isfinish}"
-            "&collectiontypes=ors&searchkeywords=&page={page}")
+# 列表页参数默认值（view 字典可覆盖任意一项）；xx0 / page 单独传入。
+LIST_DEFAULTS = dict(fw0=0, fbsj=0, ycx0=0, mainview0=0, sd0=0, lx0=0,
+                     sortType=0, isfinish=0, collectiontypes="ors")
+LIST_URL = ("https://www.jjwxc.net/bookbase.php?fw0={fw0}&fbsj={fbsj}&ycx0={ycx0}"
+            "&xx0={xx0}&mainview0={mainview0}&sd0={sd0}&lx0={lx0}&sortType={sortType}"
+            "&isfinish={isfinish}&collectiontypes={collectiontypes}"
+            "&searchkeywords=&page={page}")
 DETAIL_URL = "https://www.jjwxc.net/onebook.php?novelid={novelid}"
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -312,15 +341,25 @@ def _decode(raw: bytes, charset: str = "") -> str:
 # ---------------------------------------------------------------- 列表页
 
 
+def build_list_url(label: str, view: dict, page: int) -> str:
+    params = dict(LIST_DEFAULTS)
+    params.update({k: v for k, v in view.items() if k in LIST_DEFAULTS})
+    params["xx0"] = LABEL_XX[label]
+    params["page"] = page
+    return LIST_URL.format(**params)
+
+
+def view_key(view: dict) -> str:
+    return "|".join(f"{k}={view[k]}" for k in sorted(view) if k in LIST_DEFAULTS)
+
+
 def fetch_list_ids(fetcher: Fetcher, label: str, view: dict, pages: int) -> tuple[list[int], int]:
     """抓一个筛选视图的前 pages 页，返回 (去重后的 novelid 列表, 实际抓到的页数)。"""
-    xx0 = LABEL_XX[label]
     ids: list[int] = []
     seen: set[int] = set()
     pages_ok = 0
     for page in range(1, pages + 1):
-        url = LIST_URL.format(xx0=xx0, sortType=view["sortType"],
-                              isfinish=view["isfinish"], page=page)
+        url = build_list_url(label, view, page)
         try:
             text = fetcher.get(url, cap=2 * 1024 * 1024)
         except Exception as exc:  # 列表页失败不致命，记录后继续下一页
@@ -348,9 +387,8 @@ def collect_list_phase(fetcher: Fetcher, pages: int, views: int) -> dict:
     for label, _xx, _zh in LABELS:
         view_metas = []
         for view in VIEWS[:views]:
-            key = f"{view['isfinish']}-{view['sortType']}"
             ids, pages_ok = fetch_list_ids(fetcher, label, view, pages)
-            view_metas.append({**view, "key": key, "pages": pages_ok, "ids": ids})
+            view_metas.append({**view, "key": view_key(view), "pages": pages_ok, "ids": ids})
         list_meta[label] = {"views": view_metas, "pages": sum(v["pages"] for v in view_metas)}
         print(f"[{label}] 主视图列表完成：{list_meta[label]['pages']} 页，候选书目 "
               f"{len({i for v in view_metas for i in v['ids']})} 本")
@@ -359,7 +397,7 @@ def collect_list_phase(fetcher: Fetcher, pages: int, views: int) -> dict:
 
 def append_extra_view(fetcher: Fetcher, list_meta: dict, label: str, view: dict, pages: int) -> list[int]:
     ids, pages_ok = fetch_list_ids(fetcher, label, view, pages)
-    list_meta[label]["views"].append({**view, "key": f"{view['isfinish']}-{view['sortType']}",
+    list_meta[label]["views"].append({**view, "key": view_key(view),
                                       "pages": pages_ok, "ids": ids})
     list_meta[label]["pages"] += pages_ok
     return ids
@@ -664,7 +702,8 @@ def build_outputs(list_meta: dict, books: dict[int, dict], fail_counts: dict[str
     views_info = {}
     for lab in LABEL_ORDER:
         views_info[lab] = [
-            {k: v[k] for k in ("name", "isfinish", "sortType", "pages") if k in v}
+            {k: v[k] for k in ("name", "isfinish", "sortType", "fw0", "ycx0", "fbsj",
+                               "sd0", "mainview0", "pages") if k in v}
             | {"ids": len(v["ids"])}
             for v in list_meta.get(lab, {}).get("views", [])
         ]
@@ -672,6 +711,17 @@ def build_outputs(list_meta: dict, books: dict[int, dict], fail_counts: dict[str
         lab: len({nid for v in list_meta.get(lab, {}).get("views", []) for nid in v["ids"]})
         for lab in LABEL_ORDER
     }
+    # 与 v1 基线对比（若交付目录中存在 names_v1 / stats_v1 备份）
+    v1_baseline = None
+    v1_stats = DATA_DIR / "stats_v1.json"
+    if v1_stats.exists():
+        try:
+            old = json.loads(v1_stats.read_text(encoding="utf-8"))
+            v1_baseline = {"generated_at": old.get("generated_at"), "by_label": old.get("by_label"),
+                           "books": old.get("books"),
+                           "ambiguous_names": old.get("ambiguous_names")}
+        except (json.JSONDecodeError, OSError):
+            v1_baseline = None
     # 失败计数需要区分 label：从 _failures.jsonl 重新聚一次
     fail_by_label: dict[str, dict[str, int]] = {lab: {} for lab in LABEL_ORDER}
     fail_total: dict[str, int] = {}
@@ -709,6 +759,12 @@ def build_outputs(list_meta: dict, books: dict[int, dict], fail_counts: dict[str
                                "rejected": raw_token_total - accepted_token_total},
         "ambiguous_by_label_pair": ambiguous_by_label_pair,
         "ambiguous_examples": sorted(ambiguous)[:30],
+        "v1_baseline": v1_baseline,
+        "added_since_v1": (
+            {"by_label": {lab: by_label[lab] - v1_baseline["by_label"][lab] for lab in LABEL_ORDER},
+             "books": {lab: books_by_label[lab] - v1_baseline["books"][lab] for lab in LABEL_ORDER}}
+            if v1_baseline else None),
+        "expansion_views_used": getattr(args, "expansion_used", []),
         "network": {
             "this_run_requests": fetcher_stats.get("requests", 0),
             "this_run_detail_requests": fetcher_stats.get("detail_requests", 0),
@@ -755,7 +811,8 @@ def write_report(stats: dict, clean_by_label: dict[str, list[dict]], raw_rows: l
              f"「主角」字段，用于娱乐向玩具模型训练。")
     L.append(f"- 交付文件：`data/names.jsonl`（全量原始 {stats['names_jsonl_rows']} 行）、"
              f"`data/names_clean.jsonl`（训练集 {stats['names_clean_jsonl_rows']} 行）、"
-             f"`data/stats.json`、`data/scrape.py`")
+             f"`data/stats.json`、`data/scrape.py`；"
+             f"扩量前的 v1 备份：`data/names_v1.jsonl`、`data/names_clean_v1.jsonl`、`data/stats_v1.json`。")
     L.append("")
     L.append("## 一、结论速览\n")
     L.append("| 频道 | label | 抓取书数 | 原始名字出现次数 | 清洗后唯一名 | 最终训练名数 | 列表页数 |")
@@ -767,13 +824,27 @@ def write_report(stats: dict, clean_by_label: dict[str, list[dict]], raw_rows: l
     L.append(f"- 跨类歧义名（同名出现在多个频道）：**{stats['ambiguous_names']}** 个，已全部从训练集剔除。")
     L.append(f"- 总计训练样本：**{sum(stats['by_label'].values())}** 条（每类 "
              + " / ".join(f"{LABEL_ZH[lab]} {stats['by_label'][lab]}" for lab in LABEL_ORDER) + "）。")
+    v1 = stats.get("v1_baseline")
+    if v1 and stats.get("added_since_v1"):
+        add = stats["added_since_v1"]
+        L.append(f"- **扩量对比**：v1（{v1.get('generated_at', '')[:19]}）每类 "
+                 + " / ".join(f"{LABEL_ZH[lab]} {v1['by_label'].get(lab, 0)}" for lab in LABEL_ORDER)
+                 + f"（合计 {sum(v1['by_label'].values())}），本次**新增每类 "
+                 + " / ".join(f"{add['by_label'][lab]}" for lab in LABEL_ORDER)
+                 + f"**（合计 +{sum(add['by_label'].values())}），新增书目 "
+                 + " / ".join(f"{add['books'][lab]}" for lab in LABEL_ORDER) + " 本。")
     L.append("")
     L.append("## 二、URL 模板与频道映射\n")
     L.append("列表页（每页 100 本，`page` 从 1 开始）：\n")
     L.append("```text")
-    L.append("https://www.jjwxc.net/bookbase.php?fw0=0&fbsj=0&ycx0=0&xx0={xx0}&mainview0=0&sd0=0"
-             "&lx0=0&sortType={sortType}&isfinish={isfinish}&collectiontypes=ors&searchkeywords=&page={page}")
+    L.append("https://www.jjwxc.net/bookbase.php?fw0={fw0}&fbsj={fbsj}&ycx0={ycx0}&xx0={xx0}"
+             "&mainview0={mainview0}&sd0={sd0}&lx0={lx0}&sortType={sortType}&isfinish={isfinish}"
+             "&collectiontypes=ors&searchkeywords=&page={page}")
     L.append("```\n")
+    L.append("参数取值：`xx0` 频道（1=言情/2=纯爱/3=百合）；`fw0` 范围（0=全站、4=免费库、5=阅文衍生）；"
+             "`fbsj` 发表时间（0=全部、2=近三月、3=近一年）；`ycx0` 原创性（0=全部、2=衍生）；"
+             "`sd0` 时代（1=近代现代、2=古色古香、4=幻想未来）；`mainview0` 视角（3=主攻、4=主受）；"
+             "`sortType` 排序（0=更新时间、1=积分、3=字数、5=评论）；`isfinish` 完结状态（0=全部、1=已完结、2=连载中）。\n")
     L.append("| 频道 | xx0 | 校验用的文章类型关键词 |")
     L.append("|---|---|---|")
     for lab in LABEL_ORDER:
@@ -781,21 +852,25 @@ def write_report(stats: dict, clean_by_label: dict[str, list[dict]], raw_rows: l
     L.append("")
     L.append("详情页：`https://www.jjwxc.net/onebook.php?novelid={novelid}`\n")
     L.append("## 三、抓取策略\n")
-    view_desc = "、".join(f"{v['name']}（{v['pages']} 页 / {v['ids']} 本）"
-                          for v in stats["views_per_label"].get("baihe", []))
-    L.append("- **未登录每视图最多 10 页**：列表页第 11 页起返回「请登入后再访问此页面」。因此每个频道用"
-             "书目几乎不重叠的筛选视图拼够页数："
-             f"{view_desc} → **每频道 {stats['pages_per_label'].get('baihe', 0)} 个列表页**"
-             f"（候选 {stats['candidate_books'].get('baihe', 0)} 本）。"
-             f"每类清洗后唯一名达到目标（{stats['params'].get('target_per_label', 0)}）即停止该类，"
-             "因此实际解析书数少于候选数（省时省流量）。主视图不够时，脚本自动追加积分排序/字数排序视图补书目。")
+    L.append("- **未登录每视图最多 10 页**：列表页第 11 页起返回「请登入后再访问此页面」。"
+             "因此每个频道叠加多个低重叠的筛选/排序视图，每个视图各抓 10 页："
+             "主视图 2 个（已完结、连载中）+ 扩量视图（积分排序、字数排序、免费库、阅文衍生、"
+             "衍生作品、近三月/近一年、积分/字数×完结状态、古色古香等，按新增书目密度自动追加）。"
+             f"最终每频道 **{stats['pages_per_label'].get('baihe', 0)} 个列表页**"
+             f"（候选 {stats['candidate_books'].get('baihe', 0)} 本），"
+             f"实际解析 {stats['books']['baihe']} / {stats['books']['purelove']} / {stats['books']['romance']} 本；"
+             f"每类清洗后唯一名达到目标（{stats['params'].get('target_per_label', 0)}）即停止该类，省时省流量。")
+    if stats.get("expansion_views_used"):
+        used = "、".join(f"{e['name']}(+{e['new_books']})" for e in stats["expansion_views_used"])
+        L.append(f"- 本次用到的扩量视图（括号内为本轮新增书目，三频道合计）：{used}。"
+                 "完整视图/页数/候选书目明细见 `stats.json` 的 `views_per_label`。")
     L.append(f"- **反爬与礼貌**：并发 {args.workers}（≤4），每次请求前随机延时 "
              f"{DELAY_MIN}–{DELAY_MAX}s，失败指数退避重试 {RETRIES} 次，超时 {TIMEOUT}s，"
              "正常 Chrome UA + gzip；累计 403 达阈值自动熔断。")
     L.append("- **省带宽**：详情页只读到 `<head>` 中出现 Keywords 为止（通常 24–64KB 压缩流），"
              "不整页下载、不落盘原始 HTML。")
     L.append("- **断点续抓**：已完成/已判定丢弃的 novelid 记在 `progress.json`，重跑自动跳过；"
-             "每 30 秒落盘一次，中断后直接重跑即可续抓。")
+             "每 30 秒落盘一次，中断后直接重跑即可续抓。扩量视图的 novelid 与已处理集合去重，只抓新书。")
     L.append("- **去重与清洗**：同书内同名去重；类内同名去重；跨频道同名全部剔除（记入 stats）。")
     L.append("")
     L.append("## 四、名字抽取与清洗规则\n")
@@ -821,7 +896,7 @@ def write_report(stats: dict, clean_by_label: dict[str, list[dict]], raw_rows: l
     reasons = stats.get("discard_reasons", {})
     L.append("| 情况 | 处理 | 数量 |")
     L.append("|---|---|---|")
-    L.append(f"| 列表页第 11 页起需登录 | 改用「已完结 / 连载中」等多个不重叠筛选视图各 10 页；不够再补排序视图 | — |")
+    L.append(f"| 列表页第 11 页起需登录 | 每个频道叠加多个低重叠筛选/排序视图，每视图各 10 页 | — |")
     L.append(f"| 详情页无 Keywords（作品不存在/下架） | 丢弃并记 `_failures.jsonl` | {reasons.get('no_keywords', 0)} |")
     L.append(f"| 文章类型不含本频道关键词（串类） | 丢弃该书记录 | {reasons.get('genre_mismatch', 0)} |")
     L.append(f"| Keywords 无「主角：」字段 | 丢弃该书记录 | {reasons.get('no_protagonist', 0)} |")
@@ -878,9 +953,10 @@ def parse_args(argv: list[str] | None = None):
     p = argparse.ArgumentParser(description="抓取晋江文学城三类频道主角名（百合雷达数据集）")
     p.add_argument("--pages", type=int, default=PAGES_PER_VIEW, help="每个列表视图抓多少页（默认 10）")
     p.add_argument("--views", type=int, default=len(VIEWS), help="主视图数（默认 2：已完结/连载中）")
-    p.add_argument("--extra", type=int, default=len(EXTRA_VIEWS), help="主视图不够时最多追加几个兜底视图")
+    p.add_argument("--extra", type=int, default=len(EXPANSION_VIEWS),
+                   help="最多追加几个扩量视图（默认全部 %d 个）" % len(EXPANSION_VIEWS))
     p.add_argument("--target", type=int, default=TARGET_UNIQUE_PER_LABEL,
-                   help="每类清洗后唯一名目标（默认 2500，留出跨类歧义剔除余量）")
+                   help="每类清洗后唯一名目标（默认 %d，留出跨类歧义剔除余量）" % TARGET_UNIQUE_PER_LABEL)
     p.add_argument("--limit", type=int, default=0, help="本次每类最多新抓书数（0=不限，试跑用）")
     p.add_argument("--workers", type=int, default=WORKERS, help="并发数（契约 ≤4）")
     p.add_argument("--max-seconds", type=int, default=MAX_SECONDS, help="总时长软上限（秒）")
@@ -949,18 +1025,32 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {lab}: 候选 {len(q)} 本，已有唯一名 {len(label_unique.get(lab, ()))}")
     process_details(fetcher, queues, done, books, fail_counts, label_unique, args, t0)
 
-    # 主视图不够 → 追加兜底视图（积分排序/字数排序）继续补齐
-    for vi, view in enumerate(EXTRA_VIEWS[: args.extra]):
+    # 主视图不够 → 按 EXPANSION_VIEWS 顺序追加扩量视图，直到每类达到目标 / 视图用尽 / 超时
+    expansion_used = []
+    for vi, view in enumerate(EXPANSION_VIEWS[: args.extra]):
         short = [lab for lab in LABEL_ORDER if len(label_unique.get(lab, ())) < args.target]
         if not short or fetcher.aborted:
             break
-        print(f"[2b] 主视图不足，追加兜底视图 {view['name']}（{vi + 1}/{args.extra}）给 {short} …")
+        if time.time() - t0 > args.max_seconds * 0.92:
+            print("  [stop] 已达总时长软上限，停止追加扩量视图")
+            break
+        print(f"[2b] 扩量视图 {view['name']}（{vi + 1}/{min(args.extra, len(EXPANSION_VIEWS))}）"
+              f"→ {short}")
+        added_total = 0
         for lab in short:
             ids = append_extra_view(fetcher, list_meta, lab, view, args.pages)
             seen = set(queues[lab])
-            queues[lab].extend([i for i in ids if i not in seen])
+            new_ids = [i for i in ids if i not in seen and i not in done]
+            added_total += len(new_ids)
+            queues[lab].extend(new_ids)
+            print(f"    {lab}: 视图 {len(ids)} 本，其中新书 {len(new_ids)} 本，已排队")
+        expansion_used.append({"name": view["name"], "new_books": added_total})
         LIST_META_FILE.write_text(json.dumps(list_meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        if added_total == 0:
+            continue
         process_details(fetcher, queues, done, books, fail_counts, label_unique, args, t0)
+        print(f"  当前唯一名："
+              + ", ".join(f"{lab}={len(label_unique.get(lab, ()))}" for lab in LABEL_ORDER))
 
     print("[3/3] 生成交付文件 …")
     fetcher_stats = {"requests": fetcher.requests, "bytes_read": fetcher.bytes_read,
@@ -969,6 +1059,7 @@ def main(argv: list[str] | None = None) -> int:
                      "detail_requests": max(0, fetcher.requests - list_requests)}
     elapsed = time.time() - t0
     run_meta = update_run_meta(run_meta, fetcher_stats, elapsed)
+    args.expansion_used = expansion_used
     stats = build_outputs(list_meta, books, fail_counts, fetcher_stats, elapsed, args, run_meta)
     save_progress(done, books, t0)
     print_stats(stats)

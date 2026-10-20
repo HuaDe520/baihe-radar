@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-10-20T22:11:58+08:00",
-  "history_note": "2026-10-20 21:53–22:11：探针/试跑约 2 分钟 → 首次全量抓取约 8 分钟（约 3700 次详情请求，覆盖 1500–1700 本/类）→ 按最终清洗规则离线重建 + 补量约 1 分钟。最终成功解析 4909 本（丢弃 6 本：无 Keywords 2、串类 4）；网络抓取总计约 11 分钟，远低于契约 45 分钟上限。首轮全量早于运行元数据启用，故上方「累计」仅统计启用后的轮次。",
+  "generated_at": "2026-10-20T23:17:19+08:00",
+  "history_note": "v1（2026-10-20 21:53–22:11）：试跑校准 → 首次全量，每类约 2450 条、合计 7370 条（网络抓取约 11 分钟）。v2 扩量（22:53–23:17）：主视图 + 积分排序/字数排序/免费库 3 个扩量视图各 10 页（叠加筛选/排序参数换取不重叠书目），新增约 6833 本书、训练集扩至约 1.81 万条（网络抓取约 20 分钟）；全程无 403、无熔断。",
   "source": "晋江文学城作品库 https://www.jjwxc.net/bookbase.php (gb18030/gzip)",
   "detail_url_template": "https://www.jjwxc.net/onebook.php?novelid={novelid}",
   "labels": {
@@ -21,20 +21,20 @@
     }
   },
   "by_label": {
-    "baihe": 2458,
-    "purelove": 2465,
-    "romance": 2447
+    "baihe": 6047,
+    "purelove": 6075,
+    "romance": 5991
   },
   "books": {
-    "baihe": 1487,
-    "purelove": 1692,
-    "romance": 1730
+    "baihe": 3691,
+    "purelove": 3950,
+    "romance": 4101
   },
-  "ambiguous_names": 78,
+  "ambiguous_names": 541,
   "pages_per_label": {
-    "baihe": 20,
-    "purelove": 20,
-    "romance": 20
+    "baihe": 30,
+    "purelove": 30,
+    "romance": 30
   },
   "views_per_label": {
     "baihe": [
@@ -51,6 +51,12 @@
         "sortType": 0,
         "pages": 10,
         "ids": 1000
+      },
+      {
+        "name": "积分排序",
+        "sortType": 1,
+        "pages": 10,
+        "ids": 907
       }
     ],
     "purelove": [
@@ -67,6 +73,12 @@
         "sortType": 0,
         "pages": 10,
         "ids": 1000
+      },
+      {
+        "name": "积分排序",
+        "sortType": 1,
+        "pages": 10,
+        "ids": 898
       }
     ],
     "romance": [
@@ -83,98 +95,132 @@
         "sortType": 0,
         "pages": 10,
         "ids": 1000
+      },
+      {
+        "name": "积分排序",
+        "sortType": 1,
+        "pages": 10,
+        "ids": 892
       }
     ]
   },
   "candidate_books": {
-    "baihe": 2000,
-    "purelove": 2000,
-    "romance": 2000
+    "baihe": 2814,
+    "purelove": 2875,
+    "romance": 2883
   },
   "books_attempted": {
-    "baihe": 1487,
-    "purelove": 1696,
-    "romance": 1732
+    "baihe": 3691,
+    "purelove": 3958,
+    "romance": 4104
   },
   "books_discarded": {
     "baihe": 0,
-    "purelove": 4,
-    "romance": 2
+    "purelove": 8,
+    "romance": 3
   },
   "discard_reasons": {
-    "genre_mismatch": 4,
-    "no_keywords": 2
+    "genre_mismatch": 6,
+    "no_keywords": 4,
+    "no_protagonist": 1
   },
   "raw_name_occurrences": {
-    "baihe": 2555,
-    "purelove": 2592,
-    "romance": 2555
+    "baihe": 6673,
+    "purelove": 6695,
+    "romance": 6708
   },
   "raw_unique_names": {
-    "baihe": 2513,
-    "purelove": 2510,
-    "romance": 2505
+    "baihe": 6412,
+    "purelove": 6412,
+    "romance": 6415
   },
   "protagonist_tokens": {
-    "total": 8727,
-    "accepted": 7702,
-    "rejected": 1025
+    "total": 22015,
+    "accepted": 20076,
+    "rejected": 1939
   },
   "ambiguous_by_label_pair": {
-    "baihe+purelove": 20,
-    "baihe+romance": 33,
-    "purelove+romance": 23,
-    "baihe+purelove+romance": 2
+    "baihe+romance": 204,
+    "purelove+romance": 176,
+    "baihe+purelove": 117,
+    "baihe+purelove+romance": 44
   },
   "ambiguous_examples": [
+    "不知道",
+    "严序",
+    "严烈",
     "乌皎",
+    "乌鸦",
+    "乔予",
     "乔晚",
+    "乔疏",
+    "云冉",
+    "云宛",
     "云昕",
+    "云昭",
+    "云晚",
+    "云棠",
+    "云殊",
+    "云汐",
+    "云遥",
     "云青",
+    "五条悟",
+    "今欢",
+    "付梨",
+    "伊莎贝拉",
+    "伊路米",
+    "何依",
+    "何清晏",
     "保密",
-    "凌昭",
-    "别枝",
-    "十七",
-    "吴忧",
-    "周渡",
-    "商昀",
-    "夏沐",
-    "太宰治",
-    "奚嘉",
-    "姜妙",
-    "姜瓷",
-    "姜茶",
-    "宁知",
-    "安室透",
-    "宋玦",
-    "很多",
-    "扶苏",
-    "方执",
-    "时岁",
-    "时序",
-    "时欢",
-    "明砚",
-    "未定",
-    "林昼",
-    "林望舒"
+    "兰斯",
+    "凌寒",
+    "凌意",
+    "凌昭"
   ],
+  "v1_baseline": {
+    "generated_at": "2026-10-20T22:11:58+08:00",
+    "by_label": {
+      "baihe": 2458,
+      "purelove": 2465,
+      "romance": 2447
+    },
+    "books": {
+      "baihe": 1487,
+      "purelove": 1692,
+      "romance": 1730
+    },
+    "ambiguous_names": 78
+  },
+  "added_since_v1": {
+    "by_label": {
+      "baihe": 3589,
+      "purelove": 3610,
+      "romance": 3544
+    },
+    "books": {
+      "baihe": 2204,
+      "purelove": 2258,
+      "romance": 2371
+    }
+  },
+  "expansion_views_used": [],
   "network": {
     "this_run_requests": 0,
     "this_run_detail_requests": 0,
-    "this_run_elapsed_sec": 0.0,
-    "cumulative_requests": 270,
-    "cumulative_bytes_read": 5110623,
-    "cumulative_retries": 0,
+    "this_run_elapsed_sec": 0.1,
+    "cumulative_requests": 7270,
+    "cumulative_bytes_read": 121607979,
+    "cumulative_retries": 12,
     "forbidden_403": 0,
-    "crawl_runs": 1,
-    "cumulative_elapsed_sec": 42.0,
+    "crawl_runs": 3,
+    "cumulative_elapsed_sec": 1256.1,
     "aborted": false,
     "abort_reason": ""
   },
   "params": {
     "pages_per_view": 10,
     "views": 2,
-    "target_per_label": 2500,
+    "target_per_label": 6400,
     "workers": 4,
     "retries": 3,
     "timeout_sec": 25,
@@ -184,7 +230,7 @@
     ],
     "max_seconds": 2400
   },
-  "names_jsonl_rows": 7702,
-  "names_clean_jsonl_rows": 7370,
-  "elapsed_sec_this_run": 0.0
+  "names_jsonl_rows": 20076,
+  "names_clean_jsonl_rows": 18113,
+  "elapsed_sec_this_run": 0.1
 }

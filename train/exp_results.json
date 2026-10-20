@@ -1,0 +1,34 @@
+[
+  {
+    "arch": "cnn_pos_feat",
+    "val_acc": 0.4803,
+    "test_acc": 0.4261,
+    "macro_f1": 0.4136,
+    "best_epoch": 19,
+    "params": 133331
+  },
+  {
+    "arch": "cnn_bn_wide",
+    "val_acc": 0.4803,
+    "test_acc": 0.4342,
+    "macro_f1": 0.4173,
+    "best_epoch": 29,
+    "params": 148483
+  },
+  {
+    "arch": "bigru",
+    "val_acc": 0.4437,
+    "test_acc": 0.4233,
+    "macro_f1": 0.4238,
+    "best_epoch": 12,
+    "params": 185731
+  },
+  {
+    "arch": "binary_cnn_pos_feat",
+    "val_acc": 0.6934,
+    "test_acc": 0.6716,
+    "macro_f1": 0.5519,
+    "best_epoch": 11,
+    "params": 133202
+  }
+]

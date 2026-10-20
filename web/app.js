@@ -1,8 +1,9 @@
 /**
- * 百合雷达 BAIHE RADAR · 页面逻辑
+ * 百合雷达 BAIHE RADAR · 页面逻辑（v2 双头模型）
  *
  * 职责：加载 ./model.json → 绑定输入/示例 chips → 调 inference.js 推理
- *      → 渲染百合浓度仪表、三条概率条、逐字遮挡贡献、提示与模型卡。
+ *      → 渲染「百合指数」仪表（二分类头）、三条三类概率条（三分类头）、
+ *        逐字遮挡贡献（基于百合指数）、提示与模型卡。
  * 纯逻辑部分（verdictFor / modelCardData / buildViewModel …）导出成纯函数，方便 Node 自测。
  */
 
@@ -11,6 +12,8 @@ import { loadModel, predict, occlusionAttribution } from './inference.js';
 export const EXAMPLE_NAMES = ['林晚', '苏清', '沈月', '顾言', '张伟', '王芳', '李娜', '陈星'];
 export const DEFAULT_BASELINE = 1 / 3;
 export const CLASS_KEYS = ['baihe', 'purelove', 'romance'];
+/** 二分类头判定阈值：P(百合) ≥ 0.5 视为「判定为百合」。 */
+export const BINARY_DECISION_THRESHOLD = 0.5;
 export const MODEL_URL = new URL('./model.json', import.meta.url).href;
 
 /* ============================================================
@@ -47,25 +50,32 @@ export function formatDelta(delta) {
   return `${sign}${Math.abs(points).toFixed(1)}%`;
 }
 
-/** 按百合概率分档的一句话点评（分档文案，好玩不低俗）。 */
-export function verdictFor(probBaihe) {
-  if (!Number.isFinite(probBaihe)) return '雷达正在重启，稍后再扫一次。';
-  if (probBaihe >= 0.9) return '雷达爆表——这个名字在晋江百合频道是有编制的。';
-  if (probBaihe >= 0.75) return '警报拉满，建议立刻给这个名字安排一位女主角。';
-  if (probBaihe >= 0.6) return '粉紫信号明显，空气里已经开始飘百合花瓣了。';
-  if (probBaihe >= 0.4) return '雷达左摇右摆：薛定谔的百合，全看作者怎么落笔。';
-  if (probBaihe >= 0.2) return '雷达偏安静，这个名字更适合友情出演。';
+/**
+ * 按「百合指数」（二分类头 P(百合)）分档的一句话点评，共 8 档，好玩不低俗。
+ * 前几档沿用 v1 文案，低分段细分了两档。
+ */
+export function verdictFor(baiheIndex) {
+  if (!Number.isFinite(baiheIndex)) return '雷达正在重启，稍后再扫一次。';
+  if (baiheIndex >= 0.9) return '雷达爆表——这个名字在晋江百合频道是有编制的。';
+  if (baiheIndex >= 0.8) return '警报拉满，建议立刻给这个名字安排一位女主角。';
+  if (baiheIndex >= 0.7) return '粉紫信号明显，空气里已经开始飘百合花瓣了。';
+  if (baiheIndex >= 0.6) return '雷达持续嗡鸣，粉紫色成分肉眼可见。';
+  if (baiheIndex >= 0.45) return '雷达左摇右摆：薛定谔的百合，全看作者怎么落笔。';
+  if (baiheIndex >= 0.3) return '雷达有点犹豫：友情以上、恋爱未满。';
+  if (baiheIndex >= 0.15) return '雷达偏安静，这个名字更适合友情出演。';
   return '雷达安静得像深夜的图书馆。';
 }
 
 /** 仪表分档：返回 {label, tier}，tier 用于 CSS 配色（hot / warm / cool）。 */
-export function gaugeTier(probBaihe) {
-  if (!Number.isFinite(probBaihe)) return { label: '雷达待机', tier: 'idle' };
-  if (probBaihe >= 0.9) return { label: '雷达爆表', tier: 'hot' };
-  if (probBaihe >= 0.75) return { label: '警报拉满', tier: 'hot' };
-  if (probBaihe >= 0.6) return { label: '信号升温', tier: 'warm' };
-  if (probBaihe >= 0.4) return { label: '摇摆不定', tier: 'warm' };
-  if (probBaihe >= 0.2) return { label: '雷达偏静', tier: 'cool' };
+export function gaugeTier(baiheIndex) {
+  if (!Number.isFinite(baiheIndex)) return { label: '雷达待机', tier: 'idle' };
+  if (baiheIndex >= 0.9) return { label: '雷达爆表', tier: 'hot' };
+  if (baiheIndex >= 0.8) return { label: '警报拉满', tier: 'hot' };
+  if (baiheIndex >= 0.7) return { label: '信号强烈', tier: 'warm' };
+  if (baiheIndex >= 0.6) return { label: '持续嗡鸣', tier: 'warm' };
+  if (baiheIndex >= 0.45) return { label: '摇摆不定', tier: 'warm' };
+  if (baiheIndex >= 0.3) return { label: '有点犹豫', tier: 'cool' };
+  if (baiheIndex >= 0.15) return { label: '雷达偏静', tier: 'cool' };
   return { label: '雷达静默', tier: 'cool' };
 }
 
@@ -77,10 +87,20 @@ export function modelCardData(model) {
   const metrics = model && model.metrics ? model.metrics : null;
   const hasTraining = Boolean(metrics && Number.isFinite(metrics.n_train) && metrics.n_train > 0);
   const nTrain = hasTraining ? metrics.n_train : null;
-  const testAcc =
-    hasTraining && Number.isFinite(metrics.test_acc) && metrics.test_acc >= 0 ? metrics.test_acc : null;
+  const testAcc3 =
+    hasTraining && Number.isFinite(metrics.test_acc_3cls) && metrics.test_acc_3cls >= 0
+      ? metrics.test_acc_3cls
+      : null;
+  const binaryBalancedAcc =
+    hasTraining && Number.isFinite(metrics.binary_balanced_acc) && metrics.binary_balanced_acc >= 0
+      ? metrics.binary_balanced_acc
+      : null;
+  const binaryAcc =
+    hasTraining && Number.isFinite(metrics.binary_acc) && metrics.binary_acc >= 0 ? metrics.binary_acc : null;
   const baseline =
-    metrics && Number.isFinite(metrics.baseline) && metrics.baseline > 0 ? metrics.baseline : DEFAULT_BASELINE;
+    metrics && Number.isFinite(metrics.baseline_3cls) && metrics.baseline_3cls > 0
+      ? metrics.baseline_3cls
+      : DEFAULT_BASELINE;
 
   const dataset = model && model.dataset ? model.dataset : null;
   const perLabel = CLASS_KEYS.map((key) => (dataset && Number.isFinite(dataset[key]) ? dataset[key] : 0));
@@ -88,7 +108,9 @@ export function modelCardData(model) {
 
   return {
     nTrain,
-    testAcc,
+    testAcc3,
+    binaryBalancedAcc,
+    binaryAcc,
     baseline,
     hasTraining,
     dataset,
@@ -99,7 +121,7 @@ export function modelCardData(model) {
 }
 
 /**
- * 一次扫描的完整视图数据：概率、点评、仪表档位、逐字贡献、提示。
+ * 一次扫描的完整视图数据：双头概率、点评、仪表档位、逐字贡献、提示。
  * @param {object} model     buildModel / loadModel 结果
  * @param {string} rawInput  原始输入
  */
@@ -107,10 +129,13 @@ export function buildViewModel(model, rawInput) {
   const result = predict(model, rawInput);
   const attribution = occlusionAttribution(model, rawInput);
 
-  const probs = result.probs.slice();
+  const probs3 = result.probs3.slice();
+  const probs2 = result.probs2.slice();
   const classNames = model.config.class_names_zh.slice();
-  const baiheProb = probs[model.baiheIndex];
-  const topIndex = probs.indexOf(Math.max(...probs));
+  const binaryLabels = model.config.binary_labels.slice();
+  const baiheIndex = result.baiheIndex; // = probs2[百合位] = P(百合)
+  const baihe3 = probs3[model.baiheIndex3]; // 三分类头给的 P(百合)
+  const top3Index = probs3.indexOf(Math.max(...probs3));
 
   const notes = [];
   if (result.truncated) {
@@ -127,6 +152,8 @@ export function buildViewModel(model, rawInput) {
     });
   }
 
+  const binaryDecision = baiheIndex >= BINARY_DECISION_THRESHOLD ? 'baihe' : 'not_baihe';
+
   return {
     input: String(rawInput ?? ''),
     chars: result.chars,
@@ -135,16 +162,21 @@ export function buildViewModel(model, rawInput) {
     inputLength: result.inputLength,
     unknownChars: result.unknownChars,
     maxLen: model.config.max_len,
-    probs,
+    probs3,
+    probs2,
     classNames,
-    baiheIndex: model.baiheIndex,
-    baihePercent: baiheProb * 100,
-    baiheRounded: Math.round(baiheProb * 100),
-    verdict: verdictFor(baiheProb),
-    gauge: gaugeTier(baiheProb),
+    binaryLabels,
+    baiheIndex3: model.baiheIndex3,
+    baihe3,
+    baiheIndex,
+    baihePercent: baiheIndex * 100,
+    baiheRounded: Math.round(baiheIndex * 100),
+    binaryDecision,
+    verdict: verdictFor(baiheIndex),
+    gauge: gaugeTier(baiheIndex),
     leader: {
-      name: classNames[topIndex] || '未知',
-      percent: probs[topIndex] * 100,
+      name: classNames[top3Index] || '未知',
+      percent: probs3[top3Index] * 100,
     },
     attribution,
     notes,
@@ -184,6 +216,7 @@ function initApp() {
     fills: {},
     statNTrain: $('#stat-n-train'),
     statTestAcc: $('#stat-test-acc'),
+    statBinBalanced: $('#stat-bin-balanced-acc'),
     statBaseline: $('#stat-baseline'),
     datasetLine: $('#dataset-line'),
     formatTag: $('#format-tag'),
@@ -293,8 +326,14 @@ function initApp() {
     if (!model || !els.statNTrain) return;
     const data = modelCardData(model);
     els.statNTrain.textContent = data.nTrain == null ? '待训练' : formatInteger(data.nTrain);
-    els.statTestAcc.textContent = data.testAcc == null ? '待训练' : formatPercent(data.testAcc, 1);
-    els.statBaseline.textContent = formatBaseline(data.baseline);
+    if (els.statTestAcc) {
+      els.statTestAcc.textContent = data.testAcc3 == null ? '待训练' : formatPercent(data.testAcc3, 1);
+    }
+    if (els.statBinBalanced) {
+      els.statBinBalanced.textContent =
+        data.binaryBalancedAcc == null ? '待训练' : formatPercent(data.binaryBalancedAcc, 1);
+    }
+    if (els.statBaseline) els.statBaseline.textContent = formatBaseline(data.baseline);
     if (els.formatTag && data.format) els.formatTag.textContent = data.format;
     if (els.datasetLine) {
       els.datasetLine.textContent = data.hasDataset
@@ -342,24 +381,27 @@ function initApp() {
     void els.result.offsetWidth;
     els.result.classList.add('pop');
 
-    // 仪表
-    const ratio = Math.min(1, Math.max(0, view.probs[view.baiheIndex]));
+    // 仪表：百合指数 = 二分类头 P(百合)
+    const ratio = Math.min(1, Math.max(0, view.baiheIndex));
     const radius = els.gaugeMeter.r.baseVal.value;
     const circumference = 2 * Math.PI * radius;
     els.gaugeMeter.style.strokeDashoffset = `${circumference * (1 - ratio)}`;
     els.gauge.dataset.tier = view.gauge.tier;
-    els.gauge.setAttribute('aria-label', `百合浓度 ${view.baiheRounded}%`);
+    els.gauge.setAttribute('aria-label', `百合指数 ${view.baiheRounded}%`);
     els.gaugeNumber.textContent = String(view.baiheRounded);
     els.gaugeTier.textContent = view.gauge.label;
 
-    // 点评
+    // 点评 + 双头说明
     els.verdict.textContent = view.verdict;
-    els.leader.textContent = `当前雷达最像的频道：${view.leader.name}（${view.leader.percent.toFixed(1)}%）`;
+    const decisionText = view.binaryDecision === 'baihe' ? '判定为「百合」' : '判定为「非百合」';
+    els.leader.textContent =
+      `二分类头：${decisionText}（P(百合)=${formatPercent(view.baiheIndex, 1)}）` +
+      ` · 三分类头最像：${view.leader.name}（${view.leader.percent.toFixed(1)}%）`;
 
-    // 三条概率条
-    const topIndex = view.probs.indexOf(Math.max(...view.probs));
+    // 三条概率条：三分类头（辅助参考）
+    const topIndex = view.probs3.indexOf(Math.max(...view.probs3));
     CLASS_KEYS.forEach((key, index) => {
-      const ratioValue = Math.min(1, Math.max(0, view.probs[index]));
+      const ratioValue = Math.min(1, Math.max(0, view.probs3[index]));
       if (els.pct[key]) els.pct[key].textContent = formatPercent(ratioValue, 1);
       if (els.fills[key]) els.fills[key].style.width = `${ratioValue * 100}%`;
       if (els.bars[key]) els.bars[key].classList.toggle('is-top', index === topIndex);
@@ -384,7 +426,7 @@ function initApp() {
       els.notes.hidden = true;
     }
 
-    // 逐字贡献
+    // 逐字贡献（基于百合指数）
     els.contrib.replaceChildren();
     view.attribution.forEach((item) => {
       const points = item.delta * 100;
@@ -392,7 +434,7 @@ function initApp() {
       chip.className = 'contrib-chip';
       if (points > 0.05) chip.classList.add('contrib-chip--pos');
       else if (points < -0.05) chip.classList.add('contrib-chip--neg');
-      chip.title = `把「${item.char}」换成未知字后，百合浓度 ${formatDelta(item.delta)}（单位：百分点）`;
+      chip.title = `把「${item.char}」换成未知字后，百合指数 ${formatDelta(item.delta)}（单位：百分点）`;
 
       const charEl = document.createElement('span');
       charEl.className = 'contrib-chip__char';
