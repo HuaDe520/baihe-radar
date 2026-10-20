@@ -1,0 +1,11 @@
+{
+  "name": "baihe-radar-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "百合雷达 BAIHE RADAR · 纯静态前端（无构建、无依赖）",
+  "scripts": {
+    "mock": "node make_mock_model.mjs",
+    "parity": "node parity_test.mjs"
+  }
+}

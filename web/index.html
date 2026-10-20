@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="百合雷达 BAIHE RADAR：输入任意名字，测测它的百合浓度。纯娱乐向的字符级神经网络小玩具，训练数据仅为虚构小说角色名。"
+    />
+    <meta name="theme-color" content="#170b2b" />
+    <title>百合雷达 BAIHE RADAR</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23170b2b'/%3E%3Ccircle cx='50' cy='50' r='30' fill='none' stroke='%23ff8ad8' stroke-width='6' stroke-opacity='.5'/%3E%3Ccircle cx='50' cy='50' r='14' fill='none' stroke='%23c084fc' stroke-width='6' stroke-opacity='.7'/%3E%3Cpath d='M50 50 L50 10' stroke='%23ff8ad8' stroke-width='7' stroke-linecap='round'/%3E%3Ccircle cx='50' cy='50' r='7' fill='%23ffd1f2'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="aurora" aria-hidden="true">
+      <span class="aurora__orb aurora__orb--pink"></span>
+      <span class="aurora__orb aurora__orb--violet"></span>
+      <span class="aurora__orb aurora__orb--blue"></span>
+    </div>
+
+    <main class="wrap">
+      <header class="hero">
+        <p class="hero__badge">📡 字符级神经网络 · 纯娱乐向</p>
+        <h1 class="hero__title">
+          <svg class="hero__logo" viewBox="0 0 48 48" aria-hidden="true">
+            <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-opacity=".28" stroke-width="2" />
+            <circle cx="24" cy="24" r="13" fill="none" stroke="currentColor" stroke-opacity=".22" stroke-width="2" />
+            <circle cx="24" cy="24" r="6" fill="none" stroke="currentColor" stroke-opacity=".18" stroke-width="2" />
+            <path d="M24 24 L24 4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-opacity=".85" />
+            <circle cx="31" cy="12" r="2.6" fill="#ffd1f2" />
+            <circle cx="24" cy="24" r="3.2" fill="currentColor" />
+          </svg>
+          <span class="hero__name">百合雷达</span>
+          <span class="hero__en">BAIHE RADAR</span>
+        </h1>
+        <p class="hero__subtitle">输入任意名字，测测它的百合浓度（纯娱乐向）</p>
+      </header>
+
+      <section class="card scan-card" aria-labelledby="scan-title">
+        <h2 class="sr-only" id="scan-title">输入名字开始扫描</h2>
+        <form class="scan-form" id="scan-form" novalidate>
+          <label class="sr-only" for="name-input">输入名字</label>
+          <div class="scan-form__row">
+            <input
+              class="scan-input"
+              id="name-input"
+              type="text"
+              name="name"
+              placeholder="输入一个名字，如：林晚"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              enterkeyhint="search"
+              maxlength="40"
+            />
+            <button class="scan-btn" id="scan-btn" type="submit" disabled>
+              <span class="scan-btn__icon" aria-hidden="true">📡</span>
+              <span class="scan-btn__text" id="scan-btn-text">加载模型中…</span>
+            </button>
+          </div>
+        </form>
+        <p class="field-hint" id="input-hint" role="status" aria-live="polite"></p>
+        <div class="chips-block">
+          <span class="chips-label">试试这些名字：</span>
+          <div class="chips" id="example-chips">
+            <button class="chip" type="button" data-name="林晚">林晚</button>
+            <button class="chip" type="button" data-name="苏清">苏清</button>
+            <button class="chip" type="button" data-name="沈月">沈月</button>
+            <button class="chip" type="button" data-name="顾言">顾言</button>
+            <button class="chip" type="button" data-name="张伟">张伟</button>
+            <button class="chip" type="button" data-name="王芳">王芳</button>
+            <button class="chip" type="button" data-name="李娜">李娜</button>
+            <button class="chip" type="button" data-name="陈星">陈星</button>
+          </div>
+        </div>
+        <p class="scan-card__foot">
+          扫描会把名字拆成单个字符喂给字符级 CNN（最多取前 8 个字符），再看它更接近哪个频道。结果纯属随机巧合。
+        </p>
+      </section>
+
+      <div class="loading card" id="loading-card" aria-live="polite">
+        <span class="loading__dot" aria-hidden="true"></span>
+        <span>正在加载模型权重…</span>
+      </div>
+
+      <section class="card error-card" id="error-card" role="alert" hidden>
+        <h2 class="error-card__title" id="error-title">模型加载失败</h2>
+        <p class="error-card__text" id="error-text"></p>
+        <p class="error-card__hint" id="error-hint">
+          本地预览：先运行 <code>node web/make_mock_model.mjs</code> 生成调试权重，把
+          <code>web/mock-model.json</code> 复制成 <code>web/model.json</code>，再通过 HTTP 服务打开本页（不能直接双击
+          HTML）。正式站点由训练脚本导出 <code>web/model.json</code>。
+        </p>
+        <button class="ghost-btn" id="retry-load" type="button">重新加载模型</button>
+      </section>
+
+      <section class="card result-card" id="result-card" aria-labelledby="result-title" aria-live="polite" hidden>
+        <h2 class="sr-only" id="result-title">扫描结果</h2>
+
+        <div class="result-top">
+          <div class="gauge" id="gauge" data-tier="idle" role="img" aria-label="百合浓度待扫描">
+            <svg class="gauge__svg" viewBox="0 0 220 220" aria-hidden="true">
+              <defs>
+                <linearGradient id="gauge-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#ff8ad8" />
+                  <stop offset="52%" stop-color="#c084fc" />
+                  <stop offset="100%" stop-color="#818cf8" />
+                </linearGradient>
+              </defs>
+              <circle class="gauge__track" cx="110" cy="110" r="92" />
+              <circle class="gauge__meter" id="gauge-meter" cx="110" cy="110" r="92" stroke="url(#gauge-gradient)" />
+            </svg>
+            <div class="gauge__center">
+              <span class="gauge__caption">百合浓度</span>
+              <span class="gauge__value"><span id="gauge-number">--</span><span class="gauge__unit">%</span></span>
+              <span class="gauge__tier" id="gauge-tier">雷达待机</span>
+            </div>
+          </div>
+
+          <div class="result-summary">
+            <p class="verdict" id="verdict-text">等待扫描…</p>
+            <p class="leader" id="leader-text"></p>
+            <ul class="scan-notes" id="scan-notes" hidden></ul>
+          </div>
+        </div>
+
+        <div class="bars" aria-label="三类概率">
+          <div class="bar" data-key="baihe">
+            <div class="bar__head">
+              <span class="bar__name"><span class="bar__dot bar__dot--baihe" aria-hidden="true"></span>百合</span>
+              <span class="bar__pct" id="pct-baihe">--%</span>
+            </div>
+            <div class="bar__track"><span class="bar__fill" id="fill-baihe"></span></div>
+          </div>
+          <div class="bar" data-key="purelove">
+            <div class="bar__head">
+              <span class="bar__name"><span class="bar__dot bar__dot--purelove" aria-hidden="true"></span>纯爱(BL)</span>
+              <span class="bar__pct" id="pct-purelove">--%</span>
+            </div>
+            <div class="bar__track"><span class="bar__fill" id="fill-purelove"></span></div>
+          </div>
+          <div class="bar" data-key="romance">
+            <div class="bar__head">
+              <span class="bar__name"><span class="bar__dot bar__dot--romance" aria-hidden="true"></span>言情(BG)</span>
+              <span class="bar__pct" id="pct-romance">--%</span>
+            </div>
+            <div class="bar__track"><span class="bar__fill" id="fill-romance"></span></div>
+          </div>
+        </div>
+
+        <div class="contrib">
+          <div class="contrib__head">
+            <h3 class="contrib__title">逐字贡献</h3>
+            <p class="contrib__note">
+              把该字换成「未知字」后重算，百合浓度的变化。<strong>正值</strong> = 这个字在给百合浓度加码，负值 = 在拖后腿。
+            </p>
+          </div>
+          <div class="contrib__list" id="contrib-list" aria-label="逐字贡献"></div>
+        </div>
+      </section>
+
+      <section class="card model-card" aria-labelledby="model-title">
+        <div class="model-card__head">
+          <h2 class="model-card__title" id="model-title">模型卡</h2>
+          <span class="tag" id="format-tag">baihe-charcnn-v1</span>
+        </div>
+        <dl class="stats">
+          <div class="stat">
+            <dt>训练样本数</dt>
+            <dd id="stat-n-train">待训练</dd>
+          </div>
+          <div class="stat">
+            <dt>测试集准确率</dt>
+            <dd id="stat-test-acc">待训练</dd>
+          </div>
+          <div class="stat">
+            <dt>随机基线</dt>
+            <dd id="stat-baseline">33%</dd>
+          </div>
+        </dl>
+        <p class="model-card__line" id="dataset-line">训练数据：待接入</p>
+        <p class="model-card__line">数据来源：晋江文学城作品库主角名</p>
+        <p class="model-card__line model-card__line--muted">
+          结构：字符级 CNN（Conv k=1/2/3 → ReLU + 最大池化 → 拼接 112 维 → FC 64 → 3 分类 softmax）。全部推理在你的浏览器本地完成。
+        </p>
+        <p class="disclaimer">
+          <span class="disclaimer__icon" aria-hidden="true">⚠️</span>
+          本工具纯属娱乐，训练数据仅为虚构小说角色名，不能也不应用于判断任何真实个人的性取向。
+        </p>
+        <div class="model-card__links">
+          <a class="github-link" href="https://github.com/HuaDe520/baihe-radar" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 19c-4.3 1.3-4.3-2.2-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C7.1 3 6 3.3 6 3.3a4.3 4.3 0 0 0-.1 3.2A4.6 4.6 0 0 0 4.5 9.6c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21" />
+            </svg>
+            GitHub 仓库
+          </a>
+          <span class="model-card__note">静态站点 · 无后端 · 无追踪</span>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <p>百合雷达 BAIHE RADAR · 一个纯娱乐向的名字小玩具</p>
+        <p class="footer__muted">本页面不收集任何输入数据，所有计算都在你的浏览器里完成。</p>
+      </footer>
+    </main>
+
+    <noscript><p class="noscript">本页面需要启用 JavaScript 才能运行模型推理。</p></noscript>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

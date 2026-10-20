@@ -1,0 +1,14 @@
+CONTRACT.md
+__pycache__/
+*.pyc
+.venv/
+data/raw/
+data/_books.jsonl
+data/_failures.jsonl
+data/_list_meta.json
+data/progress.json
+data/_probe*.py
+data/book-sample.*
+data/jj-tag.html
+_api-probe.log
+hosts*.bak
