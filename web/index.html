@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta
       name="description"
-      content="百合雷达 BAIHE RADAR：输入中文名、英文名或网名，测测它的百合指数，以及性别、ACG 属性、虚构作品角色取向、ACG 百合角色等多维用字倾向。纯娱乐向的五头字符级神经网络小玩具。"
+      content="百合雷达 BAIHE RADAR：输入中文名、英文名、日文名、罗马音或网名，测测它的百合指数，以及性别、ACG 属性、虚构作品角色取向、ACG 百合角色等多维用字倾向。纯娱乐向的五头字符级神经网络小玩具。"
     />
     <meta name="theme-color" content="#170b2b" />
     <title>百合雷达 BAIHE RADAR</title>
@@ -37,7 +37,7 @@
           <span class="hero__name">百合雷达</span>
           <span class="hero__en">BAIHE RADAR</span>
         </h1>
-        <p class="hero__subtitle">输入任意名字或网名（中文 / 英文 / 字母数字下划线都行），测测它的百合指数与用字倾向（纯娱乐向）</p>
+        <p class="hero__subtitle">输入任意名字或网名（中文 / 英文 / 日文 / 罗马音 / 字母数字下划线都行），测测它的百合指数与用字倾向（纯娱乐向）</p>
       </header>
 
       <section class="card scan-card" aria-labelledby="scan-title">
@@ -50,7 +50,7 @@
               id="name-input"
               type="text"
               name="name"
-              placeholder="输入中文名 / 英文名 / 网名，如：林晚、Alice_777"
+              placeholder="输入中文 / 英文 / 日文名字或网名，如：林晚、Alice_777、フォーニ"
               autocomplete="off"
               autocapitalize="off"
               spellcheck="false"
@@ -79,11 +79,14 @@
             <button class="chip" type="button" data-name="Bob">Bob</button>
             <button class="chip" type="button" data-name="林晚_233">林晚_233</button>
             <button class="chip" type="button" data-name="Alice_777">Alice_777</button>
+            <button class="chip" type="button" data-name="フォーニ">フォーニ</button>
+            <button class="chip" type="button" data-name="渡良瀬 準">渡良瀬 準</button>
+            <button class="chip" type="button" data-name="Watarase Jun">Watarase Jun</button>
           </div>
         </div>
         <p class="scan-card__foot">
-          支持中文名、英文名、网名（字母 / 数字 / 下划线都行）；扫描会把名字拆成最多 12 个字符（拉丁字母自动转小写）喂给五头字符级 CNN，
-          分别给出百合指数、性别倾向、ACG 属性、虚构作品角色取向和 ACG 百合角色判断。结果纯属随机巧合。
+          支持中文名、英文名、日文名（含罗马音）、网名（字母 / 数字 / 下划线都行）；扫描会把名字拆成最多 12 个字符
+          （拉丁字母自动转小写）喂给五头字符级 CNN，分别给出百合指数、性别倾向、ACG 属性、虚构作品角色取向和 ACG 百合角色判断。结果纯属随机巧合。
         </p>
       </section>
 
@@ -155,7 +158,7 @@
         <section class="card head-card orientation-card" id="tower-card" aria-labelledby="tower-title" hidden>
           <div class="head-card__head">
             <h3 class="head-card__title" id="tower-title">取向套娃（虚构/娱乐）</h3>
-            <p class="head-card__note">把「性别用字倾向 × 虚构作品取向」按手写先验递归套娃，纯属捏造与娱乐，不是真人取向判断。</p>
+            <p class="head-card__note" id="tower-note">把「性别用字倾向 × 虚构作品取向」按内置娱乐矩阵递归套娃，纯属捏造与娱乐，不是真人取向判断。</p>
           </div>
           <p class="tower__sub">L0：四类取向（由性别头与作品头推导）</p>
           <div class="bars tower__l0" id="tower-l0-bars"></div>
@@ -170,7 +173,8 @@
           </div>
           <p class="tower__pick" id="tower-pick" hidden></p>
           <ol class="tower__list" id="tower-list" aria-label="套娃链 top5"></ol>
-          <p class="tower__disclaimer">套娃链是规则组合器按手写先验生成的玩笑（受 B 站《更多性取向》启发），不是模型预测，更不是真人取向判断。</p>
+          <p class="tower__source" id="tower-source" hidden></p>
+          <p class="tower__disclaimer" id="tower-disclaimer">套娃链是规则组合器按手写先验生成的玩笑（受 B 站《更多性取向》启发），不是模型预测，更不是真人取向判断。</p>
         </section>
 
         <section class="card head-card" data-head-card="expression" aria-labelledby="expression-title">
@@ -258,7 +262,11 @@
         </div>
 
         <p class="model-card__line" id="dataset-line">训练数据：待接入</p>
-        <p class="model-card__line">数据来源：晋江文学城作品库主角名 · 真实姓名用字统计 · 萌娘百科 ACG 角色分类</p>
+        <p class="model-card__line">数据来源：晋江文学城作品库主角名 · 真实姓名用字统计 · 萌娘百科 ACG 角色分类 · VNDB 日文角色名（原日文写法 + 罗马音）</p>
+        <p class="model-card__line model-card__line--muted">
+          数据源扩展：性别 / ACG 表达头加入了 VNDB 日文角色名（原日文写法 + 罗马音），所以日文名字 / 罗马音也能扫；
+          日文字符不在词表时会按「未知字」处理。
+        </p>
         <p class="model-card__line model-card__line--muted">
           结构：共享编码器（字向量 32 + 位置向量 8，最多 12 字 → Conv k=1/2/3 + BatchNorm → ReLU → max/mean 双池化
           → 拼首末字向量 576 维 → FC 160）+ 五头（性别 2 类 / ACG 属性 4 类 / 虚构作品角色取向 3 类 / 百合判定 2 类 /

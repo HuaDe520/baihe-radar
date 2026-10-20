@@ -1,20 +1,30 @@
 /**
- * 百合雷达 BAIHE RADAR · v5「取向套娃」纯前端规则组合器
+ * 百合雷达 BAIHE RADAR · v6「取向套娃」纯前端规则组合器
  *
  * 这是一个**玩笑式的规则组合器**：先用现有 v4 五头模型的 probs（性别头 × 作品头）
- * 拼出 L0 四类取向（直男 / 直女 / 男同 / 女同），再乘上一套**手写转移先验**做递归套娃，
+ * 拼出 L0 四类取向（直男 / 直女 / 男同 / 女同），再乘上一套转移矩阵做递归套娃，
  * 枚举「当前类型 → ta 喜欢什么类型 → ta 喜欢的类型又喜欢什么类型 …」的所有路径。
  *
- * ⚠️ 转移先验完全捏造，仅供娱乐；不是模型预测，更不是对任何真人取向的判断。
+ * 转移矩阵来源：
+ *   - 优先使用 `./orientation_priors.json`（由训练侧从公开作品角色关系里统计出的
+ *     4×4 平滑矩阵，含 source / n_pairs 等元信息）；
+ *   - 文件不存在 / 解析失败 / 格式不合法时，静默回落内置的手写娱乐矩阵 TOWER_TRANSITION。
+ *
+ * ⚠️ 无论哪种矩阵，都是娱乐玩笑；不是模型预测，更不是对任何真人取向的判断。
  *
  * 对外接口（纯函数，无 DOM 依赖，Node 可直接单测）：
- *   buildOrientationL0(probs)              → number[4] | null（顺序 = TOWER_TYPE_KEYS）
- *   enumerateTowerPaths(l0, depth)         → [{types, names, text, rawProb}]（4^depth 条）
- *   buildOrientationTower(probs, depth=2)  → {depth, l0, paths, samplePool, pathCount} | null
- *   towerPathText(types)                   → "女同 → 喜欢 女同 → 喜欢 直女"
- *   pickRandomTowerPath(tower, random)     → 从 top50 里随机抽一条路径
- *   formatTowerPercent(prob, digits=1)     → "9.6%"
+ *   buildOrientationL0(probs)                    → number[4] | null（顺序 = TOWER_TYPE_KEYS）
+ *   enumerateTowerPaths(l0, depth, matrix?)      → [{types, names, text, rawProb}]（4^(depth+1) 条）
+ *   buildOrientationTower(probs, depth=2, opts)  → {depth, l0, paths, samplePool, pathCount, transitionMatrix, isDataMatrix} | null
+ *   loadOrientationPriors(url)                   → Promise<priors|null>（永不 reject）
+ *   validateOrientationPriors(json)              → priors|null
+ *   towerPathText(types)                         → "女同 → 喜欢 女同 → 喜欢 直女"
+ *   pickRandomTowerPath(tower, random)           → 从 top50 里随机抽一条路径
+ *   formatTowerPercent(prob, digits=1)           → "9.6%"
  */
+
+/** 数据学转移矩阵 JSON 的格式标识 */
+export const ORIENTATION_PRIORS_FORMAT = 'orientation-priors-v1';
 
 /** 四类取向的固定顺序：直男 / 直女 / 男同 / 女同 */
 export const TOWER_TYPE_KEYS = ['straight_male', 'straight_female', 'gay_male', 'lesbian'];
@@ -64,6 +74,69 @@ function clampDepth(depth) {
 }
 
 /**
+ * 校验并归一化一个 4×4 转移矩阵：每行 4 个非负有限数、行和 > 0，
+ * 返回「行归一化」后的新矩阵；不合法返回 null。
+ */
+export function normalizeTransitionMatrix(matrix) {
+  if (!Array.isArray(matrix) || matrix.length !== TOWER_TYPE_KEYS.length) return null;
+  const out = [];
+  for (const row of matrix) {
+    if (!Array.isArray(row) || row.length !== TOWER_TYPE_KEYS.length) return null;
+    const values = row.map((value) => sanitize(value));
+    const total = values.reduce((sum, value) => sum + value, 0);
+    if (!(total > 0)) return null;
+    out.push(values.map((value) => value / total));
+  }
+  return out;
+}
+
+/**
+ * 校验 `orientation_priors.json` 内容。
+ * 至少要求：format = orientation-priors-v1，且 matrix 是合法 4×4 概率矩阵。
+ * 额外元信息（source / n_pairs / counts / alpha / generated_at）能做展示就保留。
+ *
+ * @returns {null | {format, matrix, source, nPairs, alpha, counts, generatedAt}}
+ */
+export function validateOrientationPriors(json) {
+  if (!json || typeof json !== 'object') return null;
+  if (json.format !== ORIENTATION_PRIORS_FORMAT) return null;
+  const matrix = normalizeTransitionMatrix(json.matrix);
+  if (!matrix) return null;
+  return {
+    format: json.format,
+    matrix,
+    source: typeof json.source === 'string' ? json.source : '',
+    nPairs: Number.isFinite(json.n_pairs) ? json.n_pairs : null,
+    alpha: Number.isFinite(json.alpha) ? json.alpha : null,
+    counts: Array.isArray(json.counts) ? json.counts : null,
+    generatedAt: typeof json.generated_at === 'string' ? json.generated_at : '',
+  };
+}
+
+/**
+ * 读取并校验数据学转移矩阵；**任何失败都静默返回 null**，由调用方回落到手写矩阵。
+ * @param {string} url orientation_priors.json 的地址
+ * @param {typeof fetch} [fetchImpl] 可注入 fetch（Node 单测用）
+ */
+export async function loadOrientationPriors(url = './orientation_priors.json', fetchImpl = null) {
+  const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch : null);
+  if (!doFetch) return null;
+  try {
+    const response = await doFetch(url, { cache: 'no-store' });
+    if (!response || !response.ok) return null;
+    let json;
+    try {
+      json = await response.json();
+    } catch (err) {
+      return null;
+    }
+    return validateOrientationPriors(json);
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
  * 由五头模型的 probs 推导 L0 四类取向概率（顺序 = TOWER_TYPE_KEYS）：
  *   女同 = pF * pYuri / (pYuri + pBG)
  *   直女 = pF * pBG   / (pYuri + pBG)
@@ -97,10 +170,16 @@ export function buildOrientationL0(probs) {
 
 /**
  * 枚举所有套娃路径：路径 = [L0 起点, 第 1 跳目标, ..., 第 depth 跳目标]，
- * 概率 = L0[起点] × ∏ 转移概率，共 4^depth 条。
+ * 概率 = L0[起点] × ∏ 转移概率，共 4^(depth+1) 条。
+ *
+ * @param {number[]} l0
+ * @param {number} depth
+ * @param {number[][]} [matrix=TOWER_TRANSITION] 转移矩阵（行=当前类型，列=喜欢的类型）；
+ *        传入非法矩阵时回落到内置手写矩阵
  */
-export function enumerateTowerPaths(l0, depth) {
+export function enumerateTowerPaths(l0, depth, matrix = TOWER_TRANSITION) {
   if (!Array.isArray(l0) || l0.length !== TOWER_TYPE_KEYS.length) return [];
+  const transition = normalizeTransitionMatrix(matrix) || TOWER_TRANSITION;
   const d = clampDepth(depth);
   const paths = [];
   const walk = (types, prob) => {
@@ -110,7 +189,7 @@ export function enumerateTowerPaths(l0, depth) {
     }
     const last = types[types.length - 1];
     for (let next = 0; next < TOWER_TYPE_KEYS.length; next += 1) {
-      walk([...types, next], prob * TOWER_TRANSITION[last][next]);
+      walk([...types, next], prob * transition[last][next]);
     }
   };
   for (let start = 0; start < TOWER_TYPE_KEYS.length; start += 1) {
@@ -135,6 +214,7 @@ export function towerPathText(types) {
  *
  * @param {object} probs  五头模型 predict() 返回的 probs（需要 gender / genre）
  * @param {number} [depth=2]  套娃深度 1/2/3
+ * @param {{matrix?: number[][]}} [options]  可选：数据学转移矩阵（来自 orientation_priors.json）
  * @returns {null | {
  *   depth: number,
  *   l0: Array<{key:string, name:string, prob:number, percent:number}>,
@@ -143,13 +223,17 @@ export function towerPathText(types) {
  *   samplePool: Array<{types:number[], names:string[], text:string, rawProb:number}>,
  *   pathCount: number,
  *   topK: number,
+ *   transitionMatrix: number[][],
+ *   isDataMatrix: boolean,
  * }}
  */
-export function buildOrientationTower(probs, depth = 2) {
+export function buildOrientationTower(probs, depth = 2, options = {}) {
   const l0 = buildOrientationL0(probs);
   if (!l0) return null;
   const d = clampDepth(depth);
-  const all = enumerateTowerPaths(l0, d);
+  const dataMatrix = options && options.matrix ? normalizeTransitionMatrix(options.matrix) : null;
+  const transitionMatrix = dataMatrix || TOWER_TRANSITION;
+  const all = enumerateTowerPaths(l0, d, transitionMatrix);
 
   // 排序：原始连乘概率降序；概率相同按类型序列稳定排序
   const sorted = all.slice().sort((a, b) => {
@@ -180,6 +264,8 @@ export function buildOrientationTower(probs, depth = 2) {
     samplePool: sorted.slice(0, Math.min(TOWER_SAMPLE_POOL, sorted.length)),
     pathCount: all.length,
     topK: TOWER_TOP_K,
+    transitionMatrix,
+    isDataMatrix: Boolean(dataMatrix),
   };
 }
 

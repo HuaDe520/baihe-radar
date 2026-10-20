@@ -857,8 +857,16 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.tower__source {
+  margin: 12px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.73rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
 .tower__disclaimer {
-  margin: 14px 0 0;
+  margin: 10px 0 0;
   padding-top: 12px;
   border-top: 1px dashed var(--stroke-soft);
   color: var(--ink-muted);

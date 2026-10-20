@@ -12,17 +12,22 @@ import {
   TOWER_TYPE_KEYS,
   TOWER_TYPE_NAMES,
   buildOrientationTower,
+  loadOrientationPriors,
   pickRandomTowerPath,
   formatTowerPercent,
 } from './orientation.js';
 
 export const EXAMPLE_NAMES = [
-  '林晚', '苏清', '沈月', '顾言', '张伟', '王芳', '李娜', '陈星', 'Alice', 'Bob', '林晚_233', 'Alice_777',
+  '林晚', '苏清', '沈月', '顾言', '张伟', '王芳', '李娜', '陈星',
+  'Alice', 'Bob', '林晚_233', 'Alice_777',
+  'フォーニ', '渡良瀬 準', 'Watarase Jun',
 ];
 export const DEFAULT_BASELINE = 1 / 3;
 /** 二分类头判定阈值：P(百合) ≥ 0.5 视为「判定为百合」。 */
 export const BINARY_DECISION_THRESHOLD = 0.5;
 export const MODEL_URL = new URL('./model.json', import.meta.url).href;
+/** 数据学转移矩阵地址（由训练侧生成；缺失时静默回落到内置娱乐矩阵） */
+export const ORIENTATION_PRIORS_URL = new URL('./orientation_priors.json', import.meta.url).href;
 
 /** 五个头的展示顺序与标题（与 config.heads.* 对应） */
 export const HEAD_KEYS = ['gender', 'expression', 'genre', 'yuri', 'yuri_char'];
@@ -312,6 +317,9 @@ function initApp() {
     towerPick: $('#tower-pick'),
     towerShuffle: $('#tower-shuffle'),
     towerDepthButtons: Array.from(document.querySelectorAll('[data-tower-depth]')),
+    towerNote: $('#tower-note'),
+    towerDisclaimer: $('#tower-disclaimer'),
+    towerSource: $('#tower-source'),
     metricIds: [
       'metric-gender-acc',
       'metric-gender-bal',
@@ -345,6 +353,8 @@ function initApp() {
   let lastView = null;
   let contribHead = 'yuri';
   let towerDepth = 2;
+  /** 数据学转移矩阵（orientation_priors.json）；null = 用内置手写娱乐矩阵 */
+  let orientationPriors = null;
   /** @type {Record<string, Array<{row: HTMLElement, pct: HTMLElement, fill: HTMLElement}>>} */
   const barRefs = {};
   /** L0 四条小概率条的 DOM 引用（顺序 = TOWER_TYPE_KEYS） */
@@ -354,8 +364,14 @@ function initApp() {
   initGauge();
   renderChips();
   buildTowerBars();
+  applyTowerCopy();
   bindEvents();
   bootModel();
+  loadOrientationPriors(ORIENTATION_PRIORS_URL).then((priors) => {
+    orientationPriors = priors;
+    applyTowerCopy();
+    if (lastView) renderTower(lastView);
+  });
 
   function initGauge() {
     if (!els.gaugeMeter) return;
@@ -465,7 +481,7 @@ function initApp() {
       renderModelCard();
       setLoading(false);
       setScanEnabled(true, '开始扫描');
-      if (els.input) els.input.placeholder = '输入中文名 / 英文名 / 网名，如：林晚、Alice_777';
+      if (els.input) els.input.placeholder = '输入中文 / 英文 / 日文名字或网名，如：林晚、Alice_777、フォーニ';
     } catch (err) {
       model = null;
       setLoading(false);
@@ -565,7 +581,7 @@ function initApp() {
 
     const raw = els.input.value;
     if (!raw || !raw.replace(/\s+/g, '')) {
-      setHint('请先输入一个名字或网名，比如「林晚」或「Alice_777」');
+      setHint('请先输入一个名字或网名，比如「林晚」「Alice_777」或「フォーニ」');
       shakeInput();
       els.input.focus();
       return;
@@ -732,12 +748,43 @@ function initApp() {
     });
   }
 
+  /** 当前应使用的转移矩阵选项：有数据先验用数据矩阵，否则空对象（回落内置娱乐矩阵）。 */
+  function towerMatrixOptions() {
+    if (orientationPriors && orientationPriors.matrix) return { matrix: orientationPriors.matrix };
+    return {};
+  }
+
+  /** 根据是否加载到数据先验，切换套娃卡的说明/免责/矩阵来源文案。 */
+  function applyTowerCopy() {
+    const priors = orientationPriors;
+    if (els.towerNote) {
+      els.towerNote.textContent = priors
+        ? '把「性别用字倾向 × 虚构作品取向」按数据估计的转移矩阵递归套娃（样本来自公开作品角色关系统计），纯属捏造与娱乐，不是真人取向判断。'
+        : '把「性别用字倾向 × 虚构作品取向」按内置娱乐矩阵递归套娃，纯属捏造与娱乐，不是真人取向判断。';
+    }
+    if (els.towerDisclaimer) {
+      els.towerDisclaimer.textContent = priors
+        ? '套娃链是规则组合器按数据估计的转移矩阵生成的玩笑（受 B 站《更多性取向》启发），不是模型预测，更不是真人取向判断。'
+        : '套娃链是规则组合器按手写先验生成的玩笑（受 B 站《更多性取向》启发），不是模型预测，更不是真人取向判断。';
+    }
+    if (els.towerSource) {
+      if (priors && priors.matrix) {
+        const n = Number.isFinite(priors.nPairs) ? `${formatInteger(priors.nPairs)} 对样本` : '样本数未知';
+        const source = priors.source ? ` · 来源 ${priors.source}` : '';
+        els.towerSource.textContent = `转移矩阵：数据估计（${n}${source}）`;
+      } else {
+        els.towerSource.textContent = '转移矩阵：内置娱乐矩阵（未加载数据先验）';
+      }
+      els.towerSource.hidden = false;
+    }
+  }
+
   /** 渲染套娃卡：L0 概率条 + top5 路径（百分比为 top5 归一化）。 */
   function renderTower(view) {
     if (!els.towerCard) return;
     let tower = null;
     try {
-      tower = buildOrientationTower(view.probs, towerDepth);
+      tower = buildOrientationTower(view.probs, towerDepth, towerMatrixOptions());
     } catch (err) {
       tower = null;
     }
@@ -807,7 +854,7 @@ function initApp() {
     if (!els.towerPick || !lastView) return;
     let tower = null;
     try {
-      tower = buildOrientationTower(lastView.probs, towerDepth);
+      tower = buildOrientationTower(lastView.probs, towerDepth, towerMatrixOptions());
     } catch (err) {
       tower = null;
     }

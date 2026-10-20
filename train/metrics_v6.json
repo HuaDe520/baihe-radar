@@ -1,0 +1,37 @@
+{
+  "gender_zh": {
+    "acc": 0.9705,
+    "balanced": 0.9705,
+    "n": 4000
+  },
+  "gender_foreign": {
+    "acc": 0.8755,
+    "balanced": 0.8755,
+    "n": 4000
+  },
+  "gender_jp": {
+    "acc": 0.6532,
+    "balanced": 0.6532,
+    "n": 496
+  },
+  "expression": {
+    "acc": 0.6019,
+    "balanced": 0.6392,
+    "n": 103
+  },
+  "yuri_char": {
+    "acc": 0.831,
+    "balanced": 0.7152,
+    "n": 71
+  },
+  "genre": {
+    "acc": 0.4442,
+    "balanced": 0.4437,
+    "n": 1810
+  },
+  "yuri": {
+    "acc": 0.6829,
+    "balanced": 0.5624,
+    "n": 1810
+  }
+}
